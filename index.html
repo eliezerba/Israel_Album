@@ -1,0 +1,2435 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>אלבומי תמונות לאומיים של מדינת ישראל | בר-אילן · חיפה</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web" crossorigin="anonymous"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin="anonymous"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; overflow-x: hidden; }
+        
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .barcode-stripe { transition: opacity 0.2s; }
+        .barcode-stripe:hover { opacity: 0.5; cursor: pointer; }
+        
+        .img-card:hover .img-overlay { opacity: 1; }
+        .obj-bubble { transition: all 0.2s ease; }
+        .obj-bubble:hover { transform: scale(1.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 10; }
+
+        .treemap-node { transition: all 0.3s; border: 1px solid rgba(255,255,255,0.2); }
+        .treemap-node:hover { filter: brightness(1.1); transform: scale(0.99); box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 10; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col overflow-hidden">
+    <div id="root" class="h-full flex flex-col"></div>
+    <div id="tt-root" style="position:fixed;top:0;left:0;width:0;height:0;z-index:9999;pointer-events:none;"></div>
+    <div id="err" style="display:none;position:fixed;top:0;left:0;right:0;background:#fee2e2;color:#991b1b;padding:16px;font-family:monospace;font-size:13px;z-index:99999;overflow:auto;max-height:60vh;white-space:pre-wrap;"></div>
+    <script>
+      function showErr(msg) { var d=document.getElementById('err'); d.style.display='block'; d.textContent=msg; }
+      window.onerror=function(m,s,l,c,e){ showErr('JS Error line '+l+' col '+c+': '+m+'\nSource: '+s+'\n'+(e&&e.stack?e.stack:'')); };
+      window.addEventListener('unhandledrejection',function(e){ showErr('Unhandled Promise: '+(e.reason&&e.reason.stack?e.reason.stack:e.reason)); });
+      // Intercept Babel transform errors
+      document.addEventListener('DOMContentLoaded',function(){
+        var orig = window.Babel && window.Babel.transform;
+        if(orig) { window.Babel.transform = function(code,opts){ try{ return orig.call(this,code,opts); } catch(e){ showErr('Babel parse error:\n'+e.message); throw e; } }; }
+      });
+    </script>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useCallback, useRef } = React;
+
+        // ── Language context ───────────────────────────────────────────────────
+        const LangContext = React.createContext('he');
+        const useLang = () => React.useContext(LangContext);
+
+        // Bilingual VIZ title component
+        const VizTitle = ({ icon, iconColor, he, en }) => {
+            const lang = useLang();
+            return (
+                <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3 mb-2">
+                    <i className={`${icon} ${iconColor}`}></i>
+                    {lang === 'he' ? he : en}
+                </h3>
+            );
+        };
+
+        // --- Core Parsing ---
+        const parseCaptionString = (captionStr) => {
+            if (!captionStr) return {};
+            const parts = captionStr.split(' | ');
+            const result = {};
+            parts.forEach(part => {
+                const colonIndex = part.indexOf(':');
+                if (colonIndex > -1) {
+                    const key = part.slice(0, colonIndex).trim();
+                    const value = part.slice(colonIndex + 1).trim();
+                    result[key] = value;
+                }
+            });
+            return result;
+        };
+
+        const VIBE_COLORS = {
+            // ── Core emotions ──────────────────────────────────────────────
+            'historical':   '#64748b',
+            'relaxed':      '#38bdf8',
+            'tense':        '#ef4444',
+            'somber':       '#7c3aed',
+            'celebratory':  '#f59e0b',
+            'ruins':        '#a8a29e',
+            'war':          '#991b1b',
+            'peaceful':     '#34d399',
+            'neutral':      '#cbd5e1',
+            'violent':      '#dc2626',
+            // ── From actual album data ──────────────────────────────────────
+            'serious':      '#475569',
+            'documentary':  '#0891b2',
+            'war-torn':     '#b91c1c',
+            'laborious':    '#92400e',
+            'determined':   '#15803d',
+            'desolate':     '#a16207',
+            'ancient':      '#7c2d12',
+            'solemn':       '#3730a3',
+            'crowded':      '#be185d',
+            'hopeful':      '#059669',
+            'patriotic':    '#1d4ed8',
+            'industrious':  '#d97706',
+            'agricultural': '#65a30d',
+            'communal':     '#7c3aed',
+            'joyful':       '#ea580c',
+            'austere':      '#6b7280',
+            'prayerful':    '#9333ea',
+            'bustling':     '#0369a1',
+            'meditative':   '#0f766e',
+            'triumphant':   '#dc2626',
+            'reverent':     '#4338ca',
+            'melancholic':  '#1e3a5f',
+            'nostalgic':    '#c2410c',
+        };
+        const getVibeColor = (vibe) => {
+            if (!vibe) return '#e2e8f0';
+            const firstVibe = vibe.split(',')[0].trim().toLowerCase();
+            return VIBE_COLORS[firstVibe] || '#94a3b8'; 
+        };
+
+        const getTagColor = (type) => {
+            const colors = {
+                Scene: 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200',
+                Vibe: 'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200',
+                Objects: 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200',
+                People: 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+            };
+            return colors[type] || 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200';
+        };
+
+        // ── Image proxy: use server-side cache only when running via node server.js ───
+        // On GitHub Pages or other static hosts, fall back to direct S3 URI.
+        const IS_SERVER = typeof window !== 'undefined' &&
+            ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
+        const getImgSrc = (img) => {
+            if (!img) return '';
+            if (IS_SERVER && img.image_id) return `/img/${encodeURIComponent(img.image_id)}`;
+            return img.uri || '';
+        };
+
+        // ── Floating chart tooltip (portal to dedicated fixed root) ──────────
+        const ChartTooltip = ({ tooltip }) => {
+            if (!tooltip) return null;
+            const vw = window.innerWidth || 1200;
+            const vh = window.innerHeight || 800;
+            const W = 220;
+            const left = tooltip.x + 14 + W > vw ? tooltip.x - W - 8 : tooltip.x + 14;
+            const top  = tooltip.y + 10 + 80 > vh ? tooltip.y - 80 : tooltip.y + 10;
+            const style = { position: 'fixed', left, top, zIndex: 9999, pointerEvents: 'none' };
+            const root = document.getElementById('tt-root') || document.body;
+            return ReactDOM.createPortal(
+                <div style={style} className="bg-slate-900/95 text-white text-xs px-3 py-2.5 rounded-xl shadow-2xl border border-slate-700 max-w-[220px] whitespace-pre-line leading-relaxed">
+                    {tooltip.content}
+                </div>,
+                root
+            );
+        };
+
+        const primaryScene = (sceneText) => {
+            if (!sceneText) return 'unknown';
+            return sceneText.split(',')[0].replace(/\([^)]*\)/g, '').trim().toLowerCase() || 'unknown';
+        };
+
+        const primaryVibe = (vibeText) => {
+            if (!vibeText) return 'neutral';
+            return vibeText.split(',')[0].trim().toLowerCase() || 'neutral';
+        };
+
+        const toPeopleValue = (peopleText) => {
+            if (peopleText === '1') return 1;
+            if (peopleText === '2') return 2;
+            if (peopleText === '5+') return 5;
+            const parsed = parseInt(peopleText, 10);
+            return Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 5)) : 0;
+        };
+
+        const tokenize = (text) => {
+            if (!text) return [];
+            return text
+                .toLowerCase()
+                .replace(/[^\w\u0590-\u05FF\s]/g, ' ')
+                .split(/\s+/)
+                .filter(token => token.length > 2);
+        };
+
+        const toTokenSet = (text) => new Set(tokenize(text));
+
+        const jaccardDistance = (setA, setB) => {
+            if (!setA.size && !setB.size) return 0;
+            const intersection = [...setA].filter(v => setB.has(v)).length;
+            const union = new Set([...setA, ...setB]).size || 1;
+            return 1 - (intersection / union);
+        };
+
+        const sceneColor = (sceneName) => {
+            const str = sceneName || 'unknown';
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash) % 360;
+            return `hsl(${hue}, 68%, 46%)`;
+        };
+
+        // --- Bilingual Academic Explanation Component ---
+        const BilingualTheoryBox = ({ titleHe, titleEn, fields, algoHe, algoEn, claimHe, claimEn, fieldMapHe = [], fieldMapEn = [], stepsHe = [], stepsEn = [] }) => {
+            const [isOpen, setIsOpen] = useState(false);
+
+            const autoFields = (fields || '')
+                .split(/,|&|->|vs\.?/i)
+                .map(x => x.trim())
+                .filter(Boolean);
+
+            const computedFieldMapHe = fieldMapHe.length
+                ? fieldMapHe
+                : (autoFields.length ? autoFields.map(f => ({ field: f, action: 'השדה נקרא ישירות מה-JSON ומשמש בחישוב המדד.' })) : [{ field: fields, action: 'שדות הקלט שהרכיב קורא ישירות לצורך החישוב.' }]);
+            const computedFieldMapEn = fieldMapEn.length
+                ? fieldMapEn
+                : (autoFields.length ? autoFields.map(f => ({ field: f, action: 'The field is read directly from JSON and consumed in this metric.' })) : [{ field: fields, action: 'Direct input fields consumed by this model.' }]);
+            const computedStepsHe = stepsHe.length ? stepsHe : [
+                'שליפת השדות המוגדרים מכל תמונה בקורפוס הפעיל.',
+                'ניקוי/נרמול ערכים כדי לאחד פורמטים טקסטואליים וקטגוריאליים.',
+                algoHe
+            ];
+            const computedStepsEn = stepsEn.length ? stepsEn : [
+                'Extract configured fields from each image in the active corpus.',
+                'Normalize values to align mixed textual and categorical formats.',
+                algoEn
+            ];
+
+            return (
+                <div className="mt-2 mb-6 w-full">
+                    <button onClick={() => setIsOpen(!isOpen)} className={`flex items-center justify-between w-full text-xs font-bold px-5 py-3 rounded-xl transition-all border shadow-sm ${isOpen ? 'bg-slate-800 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                        <span className="flex items-center gap-2">
+                            <i className={`ph-bold text-lg ${isOpen ? 'ph-caret-up text-blue-400' : 'ph-info text-blue-600'}`}></i>
+                            {isOpen ? 'סגור חלון הסבר / Close Method Window' : 'פתח חלון הסבר מתודולוגי / Open Method Window'}
+                        </span>
+                        <span className="font-mono text-[10px] opacity-50">{fields}</span>
+                    </button>
+                    {isOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm p-4 md:p-8 fade-in" onClick={() => setIsOpen(false)}>
+                            <div className="max-w-6xl mx-auto h-full bg-slate-800 text-slate-200 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+                                    <div>
+                                        <h4 className="font-black text-white text-lg">{titleHe} / {titleEn}</h4>
+                                        <p className="text-xs text-slate-400 mt-1">Fields: {fields}</p>
+                                    </div>
+                                    <button onClick={() => setIsOpen(false)} className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-xs font-bold">סגור / Close</button>
+                                </div>
+                                <div className="h-[calc(100%-70px)] overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                    <div className="space-y-5" dir="rtl">
+                                        <div className="bg-slate-700/40 border border-slate-600 rounded-xl p-4">
+                                            <strong className="text-emerald-300 text-xs uppercase tracking-widest block mb-2">שדות קלט מדויקים</strong>
+                                            <div className="space-y-2 text-sm">
+                                                {computedFieldMapHe.map((item, idx) => (
+                                                    <div key={`he-field-${idx}`} className="border-b border-slate-600/40 pb-2 last:border-b-0 last:pb-0">
+                                                        <div className="font-mono text-xs text-blue-200">{item.field}</div>
+                                                        <div className="text-slate-300 text-xs mt-1">{item.action}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-700/40 border border-slate-600 rounded-xl p-4">
+                                            <strong className="text-amber-300 text-xs uppercase tracking-widest block mb-2">מה המערכת עושה בדיוק</strong>
+                                            <ol className="space-y-2 text-sm list-decimal list-inside text-slate-200">
+                                                {computedStepsHe.map((step, idx) => <li key={`he-step-${idx}`}>{step}</li>)}
+                                            </ol>
+                                        </div>
+                                        <div className="bg-slate-700/40 border border-slate-600 rounded-xl p-4">
+                                            <strong className="text-purple-300 text-xs uppercase tracking-widest block mb-1">משמעות תיאורטית</strong>
+                                            <p className="text-sm text-slate-200 leading-relaxed">{claimHe}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-5" dir="ltr">
+                                        <div className="bg-slate-700/40 border border-slate-600 rounded-xl p-4">
+                                            <strong className="text-emerald-300 text-xs uppercase tracking-widest block mb-2">Exact Input Fields</strong>
+                                            <div className="space-y-2 text-sm">
+                                                {computedFieldMapEn.map((item, idx) => (
+                                                    <div key={`en-field-${idx}`} className="border-b border-slate-600/40 pb-2 last:border-b-0 last:pb-0">
+                                                        <div className="font-mono text-xs text-blue-200">{item.field}</div>
+                                                        <div className="text-slate-300 text-xs mt-1">{item.action}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-700/40 border border-slate-600 rounded-xl p-4">
+                                            <strong className="text-amber-300 text-xs uppercase tracking-widest block mb-2">Exact Computational Pipeline</strong>
+                                            <ol className="space-y-2 text-sm list-decimal list-inside text-slate-200">
+                                                {computedStepsEn.map((step, idx) => <li key={`en-step-${idx}`}>{step}</li>)}
+                                            </ol>
+                                        </div>
+                                        <div className="bg-slate-700/40 border border-slate-600 rounded-xl p-4">
+                                            <strong className="text-purple-300 text-xs uppercase tracking-widest block mb-1">Theoretical Framing</strong>
+                                            <p className="text-sm text-slate-200 leading-relaxed">{claimEn}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const OptimizedImage = ({ src, alt, className, eager = false }) => {
+            const containerRef = useRef(null);
+            const [shouldRender, setShouldRender] = useState(eager);
+            const [isLoaded, setIsLoaded] = useState(false);
+            const [hasError, setHasError] = useState(false);
+
+            useEffect(() => {
+                setHasError(false);
+                setIsLoaded(false);
+                setShouldRender(eager);
+            }, [src, eager]);
+
+            useEffect(() => {
+                if (!src || eager || shouldRender) return;
+                const node = containerRef.current;
+                if (!node || typeof IntersectionObserver === 'undefined') {
+                    setShouldRender(true);
+                    return;
+                }
+                const observer = new IntersectionObserver((entries) => {
+                    if (entries.some(entry => entry.isIntersecting)) {
+                        setShouldRender(true);
+                        observer.disconnect();
+                    }
+                }, { rootMargin: '320px' });
+                observer.observe(node);
+                return () => observer.disconnect();
+            }, [src, eager, shouldRender]);
+
+            return (
+                <div ref={containerRef} className="w-full h-full bg-slate-200 relative overflow-hidden">
+                    {!isLoaded && !hasError && (
+                        <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 animate-pulse"></div>
+                    )}
+                    {src && shouldRender && !hasError && (
+                        <img
+                            src={src}
+                            alt={alt || ''}
+                            referrerPolicy="no-referrer"
+                            loading={eager ? 'eager' : 'lazy'}
+                            decoding="async"
+                            fetchPriority={eager ? 'high' : 'low'}
+                            onLoad={() => setIsLoaded(true)}
+                            onError={() => setHasError(true)}
+                            className={`${className} ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300`}
+                        />
+                    )}
+                    {(!src || hasError) && (
+                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                            <i className="ph ph-image-broken text-3xl"></i>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 1: הדיאלקטיקה המולטי-מודאלית (Modalities)
+        // ==========================================
+        const ModalitiesDialectic = ({ images }) => {
+            const [ttip, setTtip] = useState(null);
+            const data = useMemo(() => {
+                let visualWords = 0; let textualWords = 0;
+                images.forEach(img => {
+                    const m = img.parsedMetadata;
+                    visualWords += (m.Objects ? m.Objects.split(',').length : 0) + (m.Description ? m.Description.split(' ').length : 0);
+                    textualWords += (m.Caption ? m.Caption.split(' ').length : 0) + (m.Text ? m.Text.split(' ').length : 0);
+                });
+                const total = visualWords + textualWords || 1;
+                return { vPct: (visualWords/total)*100, tPct: (textualWords/total)*100, visualWords, textualWords };
+            }, [images]);
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-arrows-split" iconColor="text-blue-600" he="מולטי-מודאליות: תמונה מול טקסט" en="Modalities Dialectic: Image vs. Text" />
+                    <BilingualTheoryBox 
+                        titleHe="זירת התיווך המולטי-מודאלית"
+                        titleEn="The Multimodal Mediation Arena"
+                        fields="Objects & Description vs. Caption & OCR"
+                        algoHe="השוואה כמותית של 'נפח המידע'. האלגוריתם סוכם את כמות האובייקטים והמילים בתיאור הראייה הממוחשבת (המידע הויזואלי הגולמי) אל מול מספר המילים בכיתוב המקורי של האלבום ובטקסט שזוהה בתוך התמונה (התיווך הטקסטואלי)."
+                        algoEn="Quantitative comparison of 'information volume'. The algorithm sums the count of detected objects and computer vision description words (raw visual data) versus the word count of the original album caption and in-image OCR text (textual mediation)."
+                        claimHe="האלבום מתווך מציאות ולא רק משקף אותה. המודל מציף פערים: לדוגמה, תמונה עמוסה בפרטים ויזואליים שמקבלת כיתוב קצר וחד-מימדי המצמצם את משמעותה להקשר לאומי צר."
+                        claimEn="The album mediates reality rather than just reflecting it. This model highlights discrepancies: e.g., a visually cluttered image accompanied by a reductive, one-dimensional caption that restricts its meaning to a narrow national context."
+                    />
+                    <div className="mt-8 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                        <div className="flex justify-between mb-2 font-bold text-sm">
+                            <span className="text-blue-600">העושר הויזואלי (המצלמה)</span>
+                            <span className="text-amber-600">התיווך הטקסטואלי (העורך)</span>
+                        </div>
+                        <div className="h-10 w-full bg-slate-200 rounded-full overflow-hidden flex shadow-inner">
+                            <div className="h-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center px-4 text-white font-bold cursor-pointer" style={{width: `${data.vPct}%`}}
+                                onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`עושר ויזואלי
+אובייקטים + תיאורים: ${data.visualWords} ישויות
+${data.vPct.toFixed(1)}% מסך המידע`})}
+                                onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                onMouseLeave={() => setTtip(null)}>{data.vPct.toFixed(1)}%</div>
+                            <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 flex items-center justify-end px-4 text-white font-bold cursor-pointer" style={{width: `${data.tPct}%`}}
+                                onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`תיווך טקסטואלי
+כיתובים + OCR: ${data.textualWords} מילים
+${data.tPct.toFixed(1)}% מסך המידע`})}
+                                onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                onMouseLeave={() => setTtip(null)}>{data.tPct.toFixed(1)}%</div>
+                        </div>
+                        <div className="flex justify-between mt-4 text-xs text-slate-500">
+                            <span>{data.visualWords} ישויות/מילים זוהו</span>
+                            <span>{data.textualWords} מילים הודפסו</span>
+                        </div>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 2: התחביר המרחבי (Spatial Syntax)
+        // ==========================================
+        const SpatialSyntax = ({ images, onTagClick }) => {
+            const [ttip, setTtip] = useState(null);
+            const data = useMemo(() => {
+                const pages = images
+                    .map(img => ({
+                        page: img.image_num,
+                        scene: primaryScene(img.parsedMetadata.Scene),
+                        objects: (img.parsedMetadata.Objects || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
+                    }))
+                    .sort((a, b) => a.page - b.page);
+
+                const sceneCounts = {};
+                const sceneObjects = {};
+                pages.forEach(p => {
+                    sceneCounts[p.scene] = (sceneCounts[p.scene] || 0) + 1;
+                    if (!sceneObjects[p.scene]) sceneObjects[p.scene] = {};
+                    p.objects.forEach(obj => {
+                        sceneObjects[p.scene][obj] = (sceneObjects[p.scene][obj] || 0) + 1;
+                    });
+                });
+
+                const topScenes = Object.entries(sceneCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 8)
+                    .map(([name]) => name);
+
+                const binCount = Math.min(30, Math.max(12, Math.round(pages.length / 4)));
+                const sceneBins = {};
+                topScenes.forEach(scene => {
+                    sceneBins[scene] = new Array(binCount).fill(0);
+                });
+
+                pages.forEach((p, idx) => {
+                    if (!sceneBins[p.scene]) return;
+                    const bin = Math.min(binCount - 1, Math.floor((idx / Math.max(1, pages.length)) * binCount));
+                    sceneBins[p.scene][bin] += 1;
+                });
+
+                const topObjectsByScene = {};
+                topScenes.forEach(scene => {
+                    topObjectsByScene[scene] = Object.entries(sceneObjects[scene] || {})
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 4);
+                });
+
+                const transitionCounts = {};
+                for (let i = 1; i < pages.length; i++) {
+                    const prev = pages[i - 1].scene;
+                    const curr = pages[i].scene;
+                    const key = `${prev}=>${curr}`;
+                    transitionCounts[key] = (transitionCounts[key] || 0) + 1;
+                }
+                const topTransitions = Object.entries(transitionCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 8)
+                    .map(([key, count]) => {
+                        const [from, to] = key.split('=>');
+                        return { from, to, count };
+                    });
+
+                let maxBin = 1;
+                topScenes.forEach(scene => {
+                    sceneBins[scene].forEach(v => {
+                        if (v > maxBin) maxBin = v;
+                    });
+                });
+
+                return { pages, topScenes, sceneCounts, sceneBins, topObjectsByScene, topTransitions, maxBin, binCount };
+            }, [images]);
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-graph" iconColor="text-emerald-600" he="התחביר המרחבי: לינארי + מצרפי" en="Spatial Syntax: Sequential + Aggregate" />
+                    <BilingualTheoryBox 
+                        titleHe="האקולוגיה של המרחב הלאומי"
+                        titleEn="Ecology of the National Space"
+                        fields="image_num, Scene, Objects"
+                        fieldMapHe={[
+                            { field: 'image_num', action: 'מסדר את האלבום כרצף לינארי קבוע (ציר זמן של דפים).' },
+                            { field: 'Scene', action: 'מחלץ סצנה ראשית לכל עמוד, מחשב שכיחות, יוצר bins זמן, ומחשב מעברים בין סצנות רצופות.' },
+                            { field: 'Objects', action: 'מחשב חתימת אובייקטים מובילים לכל סצנה לצורך פרשנות חומרית.' }
+                        ]}
+                        fieldMapEn={[
+                            { field: 'image_num', action: 'Orders the album as a fixed linear page-time axis.' },
+                            { field: 'Scene', action: 'Extracts the primary scene per page, computes frequency, temporal bins, and adjacent scene transitions.' },
+                            { field: 'Objects', action: 'Builds top-object signatures per scene for material interpretation.' }
+                        ]}
+                        stepsHe={[
+                            'המערכת ממיינת עמודים לפי image_num ומחלצת scene ראשי מכל תמונה.',
+                            'המערכת בונה שני ייצוגים במקביל: סרט לינארי דף-דף ו-heatmap מרוכז לפי מקטעי זמן.',
+                            'לכל סצנה מחושבים אובייקטים מובילים ומעברי סצנה עוקבים (Scene_i -> Scene_i+1).'
+                        ]}
+                        stepsEn={[
+                            'Pages are sorted by image_num and mapped to a primary scene label.',
+                            'Two views are computed simultaneously: a page-level linear strip and a temporally binned heatmap.',
+                            'Top object signatures per scene and adjacent scene transitions (Scene_i -> Scene_i+1) are then computed.'
+                        ]}
+                        algoHe="בניית מודל כפול: גם רצף לינארי לכל עמוד וגם דחיסת זמן למקטעים קבועים. החישוב משלב שכיחות סצנות, צפיפות לאורך האלבום ומעברי סצנה רציפים, כדי לחשוף מבנה מרחבי ונרטיבי יחד."
+                        algoEn="A dual model combines page-level linear sequence with fixed temporal binning. The computation integrates scene frequency, distribution over album time, and adjacent scene transitions to reveal spatial and narrative structure together."
+                        claimHe="חושף את ה'דקדוק החומרי' של הלאום ואת מיקום החפצים במרחב. אילו כלים מאפיינים את זירת ההתיישבות לעומת זירת המלחמה? מהו הציוד החומרי של 'החלוץ'? מספק אונטולוגיה של המרחב הציבורי והפרטי."
+                        claimEn="Exposes the 'material grammar' of the nation and the spatial placement of items. What tools characterize the settlement scene versus the war zone? Provides an ontology of public and private national spaces."
+                    />
+
+                    <div className="mt-6 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-sm font-black text-slate-700">תצוגה לינארית: סצנה לכל עמוד</h4>
+                            <span className="text-xs text-slate-500">{data.pages.length} עמודים</span>
+                        </div>
+                        <div className="h-16 w-full flex rounded-lg overflow-hidden border border-slate-300 bg-white">
+                            {data.pages.map(p => (
+                                <div
+                                    key={p.page}
+                                    className="flex-1 min-w-[2px] cursor-pointer hover:opacity-80"
+                                    style={{ backgroundColor: sceneColor(p.scene) }}
+                                    onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`עמ' ${p.page}\nסצנה: ${p.scene}`})}
+                                    onMouseMove={e => setTtip(p2 => p2 ? {...p2,x:e.clientX,y:e.clientY} : null)}
+                                    onMouseLeave={() => setTtip(null)}
+                                    onClick={() => onTagClick && onTagClick(p.scene, 'Scene')}
+                                ></div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="mt-6 overflow-x-auto" dir="ltr">
+                        <div className="min-w-[960px] bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-black text-slate-700">תצוגה מרוכזת: צפיפות סצנות לאורך האלבום</h4>
+                                <span className="text-xs text-slate-500">{data.binCount} מקטעי זמן</span>
+                            </div>
+
+                            {data.topScenes.map(scene => (
+                                <div key={scene} className="grid grid-cols-[180px_1fr_220px] gap-3 items-center">
+                                    <button
+                                        onClick={() => onTagClick && onTagClick(scene, 'Scene')}
+                                        className="text-left text-xs font-bold capitalize text-slate-700 hover:text-emerald-700"
+                                        style={{ borderLeft: `6px solid ${sceneColor(scene)}`, paddingLeft: '8px' }}
+                                        title={`Filter by scene: ${scene}`}
+                                    >
+                                        {scene} ({data.sceneCounts[scene] || 0})
+                                    </button>
+
+                                    <div className="flex h-8 rounded overflow-hidden border border-slate-300 bg-white">
+                                        {data.sceneBins[scene].map((value, idx) => {
+                                            const intensity = value / data.maxBin;
+                                            return (
+                                                <div
+                                                    key={`${scene}-bin-${idx}`}
+                                                    className="flex-1 border-r border-slate-200/40"
+                                                    style={{ backgroundColor: sceneColor(scene), opacity: value ? 0.12 + intensity * 0.88 : 0.04 }}
+                                                    onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`${scene}\nמקטע ${idx + 1}/${data.binCount}\n${value} עמודים`})}
+                                                    onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                                    onMouseLeave={() => setTtip(null)}
+                                                ></div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {(data.topObjectsByScene[scene] || []).map(([obj, freq]) => (
+                                            <button
+                                                key={`${scene}-${obj}`}
+                                                onClick={() => onTagClick && onTagClick(obj, 'Objects')}
+                                                className="px-2 py-1 rounded-md text-[11px] bg-white border border-slate-300 text-slate-700 hover:bg-emerald-50 capitalize"
+                                                title={`${obj}: ${freq}`}
+                                            >
+                                                {obj} ({freq})
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="mt-6 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                        <h4 className="text-sm font-black text-slate-700 mb-3">מעברי סצנה מובילים (לינארי)</h4>
+                        <div className="flex flex-wrap gap-2">
+                            {data.topTransitions.map((tr, idx) => (
+                                <button
+                                    key={`${tr.from}-${tr.to}-${idx}`}
+                                    onClick={() => onTagClick && onTagClick(tr.from, 'Scene')}
+                                    className="px-3 py-2 rounded-lg bg-white border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                                    title={`Transition count: ${tr.count}`}
+                                >
+                                    <span className="capitalize">{tr.from}</span> <span className="mx-1">→</span> <span className="capitalize">{tr.to}</span> <span className="text-slate-500">({tr.count})</span>
+                                </button>
+                            ))}
+                            {data.topTransitions.length === 0 && (
+                                <div className="text-xs text-slate-500">אין מספיק מידע למעברים.</div>
+                            )}
+                        </div>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 3: הברקוד הרגשי (Vibe Barcode)
+        // ==========================================
+        const VibeBarcode = ({ images, onTagClick }) => {
+            const [ttip, setTtip] = useState(null);
+            const existingVibes = useMemo(() => {
+                const vibes = new Set();
+                images.forEach(img => { if(img.parsedMetadata.Vibe) vibes.add(img.parsedMetadata.Vibe.split(',')[0].trim().toLowerCase()); });
+                return Array.from(vibes).slice(0,8); 
+            }, [images]);
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-barcode" iconColor="text-purple-600" he="הברקוד הרגשי" en="Emotional Barcode" />
+                    <BilingualTheoryBox 
+                        titleHe="הטמפורליות של האווירה"
+                        titleEn="Temporality of the Vibe"
+                        fields="image_num (X-axis) & Vibe (Color)"
+                        algoHe="דחיסת כל עמוד באלבום לפס אנכי המסודר לינארית (מעמוד 1 ועד הסוף). צבע הפס נגזר מהאווירה (Vibe) הראשית שזוהתה בתמונה על ידי מודל השפה."
+                        algoEn="Compressing each album page into a vertical stripe arranged linearly (from page 1 to the end). The stripe's color is derived from the primary emotional 'Vibe' detected in the image by the language model."
+                        claimHe="האלבום אינו ארכיון אקראי אלא נרטיב קולנועי מתוזמן. הברקוד מאפשר לזהות את ה'פסקול הויזואלי' במבט מהיר: מעבר מגוונים אדומים (מתח/מלחמה) בתחילת האלבום לגוונים בהירים (רגיעה/בניין) בסופו."
+                        claimEn="The album is not a random archive but a timed cinematic narrative. The barcode identifies the 'visual soundtrack' at a glance: e.g., transitioning from red hues (tension/war) early on, to light hues (peace/building) at the end."
+                    />
+                    <div className="flex flex-wrap gap-3 mb-4 mt-4">
+                        {existingVibes.map(v => (
+                            <div key={v} className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                                <span className="w-3 h-3 rounded-full" style={{backgroundColor: getVibeColor(v)}}></span>
+                                <span className="capitalize">{v}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="h-20 w-full flex bg-slate-100 rounded-lg overflow-hidden border border-slate-300 shadow-inner">
+                        {images.map(img => {
+                            const vibe = img.parsedMetadata.Vibe ? img.parsedMetadata.Vibe.split(',')[0].trim().toLowerCase() : 'neutral';
+                            const allVibes = img.parsedMetadata.Vibe || vibe;
+                            return <div key={img.image_num}
+                                onClick={()=>onTagClick&&onTagClick(vibe, 'Vibe')}
+                                onMouseEnter={(e) => setTtip({ x:e.clientX, y:e.clientY, content:`עמוד ${img.image_num}\n${allVibes}` })}
+                                onMouseMove={(e) => setTtip(p => p ? {...p, x:e.clientX, y:e.clientY} : null)}
+                                onMouseLeave={() => setTtip(null)}
+                                className="flex-1 h-full barcode-stripe cursor-pointer" style={{ backgroundColor: getVibeColor(vibe) }}></div>;
+                        })}
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 4: זרימה דמוגרפית (Demographic Stream)
+        // ==========================================
+        const DemographicStream = ({ images }) => {
+            const [ttip, setTtip] = useState(null);
+            const contRefD = useRef(null);
+            const streamData = images.map(img => {
+                const p = img.parsedMetadata.People;
+                let val = 0; if(p === '1') val = 1; else if(p === '2') val = 2; else if(p === '5+') val = 5;
+                return { page: img.image_num, val };
+            });
+            const createPath = (data, w, h) => {
+                if(!data.length) return '';
+                const stepX = w/(data.length-1);
+                let d=`M 0 ${h}`;
+                data.forEach((p,i) => { d+=` L ${i*stepX} ${h-((p.val/5)*h)}`});
+                return d+` L ${w} ${h} Z`;
+            };
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-users" iconColor="text-blue-600" he="המקצב הדמוגרפי" en="Demographic Rhythm" />
+                    <BilingualTheoryBox 
+                        titleHe="זרימת הנוכחות האנושית"
+                        titleEn="Human Presence Flow"
+                        fields="image_num (X-axis) & People (Y-axis Area)"
+                        algoHe="המרת הערכים הקטגוריאליים של שדה האנשים ('0', '1', '2', '5+') לערכים מספריים רציפים. שרטוט הפוליגון כגרף שטח המייצג גובה וצפיפות לאורך ציר הזמן הלינארי של האלבום."
+                        algoEn="Converting the categorical values of the People field ('0', '1', '2', '5+') into continuous numerical values. Drawing a polygon area chart that represents height and density along the linear timeline of the album."
+                        claimHe="בוחן את יחס האלבום לפרט מול הכלל. האם האלבום מקדם נרטיב קולקטיביסטי המבוסס על המונים (פיקים גבוהים ועקביים של 5+), מתמקד בגיבור האינדיבידואלי (קו ישר על 1), או מציג נופים וטבע ריקים מאדם?"
+                        claimEn="Examines the album's attitude towards the individual vs. the collective. Does it promote a collectivist narrative based on crowds (consistent 5+ peaks), focus on the individual hero (straight line on 1), or show empty landscapes?"
+                    />
+                    <div ref={contRefD} className="relative w-full h-32 bg-slate-50 border-b-2 border-slate-300 mt-6 cursor-crosshair"
+                        onMouseMove={(e) => { const r=contRefD.current?.getBoundingClientRect(); if(!r) return; const idx=Math.max(0,Math.min(streamData.length-1,Math.round(((e.clientX-r.left)/r.width)*(streamData.length-1)))); const pt=streamData[idx]; const lab={0:'ללא אנשים',1:'1 אדם',2:'2 אנשים',5:'5+ (המונים)'}[pt.val]||String(pt.val); setTtip({x:e.clientX,y:e.clientY,content:`עמוד ${pt.page}\n${lab}`}); }}
+                        onMouseLeave={() => setTtip(null)}>
+                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 160">
+                            <line x1="0" y1="32" x2="1000" y2="32" stroke="#e2e8f0" strokeDasharray="4 4" />
+                            <text x="10" y="28" fontSize="12" fill="#94a3b8">5+ (המונים / Crowds)</text>
+                            <line x1="0" y1="96" x2="1000" y2="96" stroke="#e2e8f0" strokeDasharray="4 4" />
+                            <text x="10" y="92" fontSize="12" fill="#94a3b8">2 אנשים / People</text>
+                            <path d={createPath(streamData, 1000, 160)} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth="2" />
+                        </svg>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 5: מקצב מרחבי (Spatial Rhythm - Indoor/Outdoor)
+        // ==========================================
+        const SpatialRhythm = ({ images, onTagClick }) => {
+            const [ttip, setTtip] = useState(null);
+            const contRefS = useRef(null);
+            const data = images.map(img => {
+                const scene = (img.parsedMetadata.Scene || '').toLowerCase();
+                return { page: img.image_num, isOut: scene.includes('(outdoor)') ? 1 : 0, isIn: scene.includes('(indoor)') ? 1 : 0 };
+            });
+
+            const buildLinePath = (values, w, h) => {
+                if (!values.length) return '';
+                if (values.length === 1) return `M 0 ${h - values[0] * h} L ${w} ${h - values[0] * h}`;
+                const step = w / (values.length - 1);
+                let path = '';
+                values.forEach((v, i) => {
+                    const x = i * step;
+                    const y = h - v * h;
+                    path += `${i === 0 ? 'M' : 'L'} ${x} ${y} `;
+                });
+                return path;
+            };
+
+            const outdoorVals = data.map(d => d.isOut);
+            const indoorVals = data.map(d => d.isIn);
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-house-line" iconColor="text-teal-600" he="מקצב מרחבי (פנים מול חוץ)" en="Spatial Rhythm (Indoor vs. Outdoor)" />
+                    <BilingualTheoryBox 
+                        titleHe="קצב התנועה בין פנים לחוץ"
+                        titleEn="Rhythm of Movement: Indoor vs. Outdoor"
+                        fields="image_num & Scene (Regex search for 'indoor/outdoor')"
+                        fieldMapHe={[
+                            { field: 'image_num', action: 'ממקם כל עמוד על ציר הזמן של האלבום.' },
+                            { field: 'Scene', action: 'מאתר אם מופיע indoor או outdoor וממיר לוקטור בינארי לכל עמוד.' }
+                        ]}
+                        fieldMapEn={[
+                            { field: 'image_num', action: 'Positions every page on the album timeline.' },
+                            { field: 'Scene', action: 'Detects indoor/outdoor tags and converts each page into binary temporal vectors.' }
+                        ]}
+                        stepsHe={[
+                            'לכל עמוד מחושב ערך בינארי לחוץ (1/0) ופנים (1/0) לפי Scene.',
+                            'הערכים נפרסים כרצפי זמן ברוחב מלא כך שניתן לראות רצפים, שברים והחלפות קצב.',
+                            'המערכת מספקת גם פס סיכום מהיר של אחוזי פנים/חוץ באלבום.'
+                        ]}
+                        stepsEn={[
+                            'Each page receives binary indoor/outdoor values derived from Scene.',
+                            'These vectors are rendered as full-width temporal traces to expose continuity and breaks.',
+                            'A quick ratio summary reports overall indoor/outdoor balance.'
+                        ]}
+                        algoHe="סריקת ביטויים רגולריים (Regex) לאיתור התיוגים הקשיחים '(indoor)' ו-'(outdoor)' מתוך תיאור הסצנה. הצגת הנתונים כגרף בלוקים צפוף המשקף מעברים על פני זמן."
+                        algoEn="Regex scanning to locate the hardcoded tags '(indoor)' and '(outdoor)' within the Scene description. Displaying the data as a dense block chart reflecting spatial transitions over time."
+                        claimHe="עונה על שאלה בימויית מהותית: האם האלבום משדר 'בניית הארץ/מלחמה' שמתרחשת בעיקרה בחוץ תחת השמש, או חושף אטמוספירה פרטית ומוסדית המתרחשת בתוך מבנים סגורים?"
+                        claimEn="Answers a fundamental directorial question: Does the album broadcast 'nation-building/war' occurring primarily outdoors under the sun, or does it reveal a private/institutional atmosphere occurring inside enclosed structures?"
+                    />
+                    
+                    <div className="flex items-center gap-4 mb-2 text-xs font-bold mt-6">
+                        <span className="flex items-center gap-1 text-teal-600"><div className="w-3 h-3 bg-teal-500 rounded-sm"></div> חוץ (Outdoor)</span>
+                        <span className="flex items-center gap-1 text-slate-600"><div className="w-3 h-3 bg-slate-700 rounded-sm"></div> פנים (Indoor)</span>
+                    </div>
+
+                    <div ref={contRefS} className="relative w-full h-36 bg-slate-50 border border-slate-300 rounded-xl overflow-hidden cursor-crosshair"
+                        onMouseMove={(e) => { const r=contRefS.current?.getBoundingClientRect(); if(!r) return; const idx=Math.max(0,Math.min(data.length-1,Math.round(((e.clientX-r.left)/r.width)*(data.length-1)))); const pt=data[idx]; const place=pt.isOut?'חוץ (outdoor)':pt.isIn?'פנים (indoor)':'לא מוגדר'; setTtip({x:e.clientX,y:e.clientY,content:`עמוד ${pt.page}\n${place}`}); }}
+                        onMouseLeave={() => setTtip(null)}>
+                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 160">
+                            <line x1="0" y1="140" x2="1000" y2="140" stroke="#cbd5e1" strokeWidth="1" />
+                            <line x1="0" y1="20" x2="1000" y2="20" stroke="#e2e8f0" strokeDasharray="4 4" />
+                            <path d={buildLinePath(outdoorVals, 1000, 140)} fill="none" stroke="#14b8a6" strokeWidth="3" />
+                            <path d={buildLinePath(indoorVals, 1000, 140)} fill="none" stroke="#334155" strokeWidth="3" />
+                        </svg>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+
+                    <div className="mt-4 flex items-center gap-3 text-xs">
+                        <button onClick={() => onTagClick && onTagClick('outdoor', 'Scene')} className="px-3 py-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-700 font-bold hover:bg-teal-100">
+                            סנן חוץ
+                        </button>
+                        <button onClick={() => onTagClick && onTagClick('indoor', 'Scene')} className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-300 text-slate-700 font-bold hover:bg-slate-200">
+                            סנן פנים
+                        </button>
+                        <span className="text-slate-500">
+                            חוץ: {Math.round((outdoorVals.reduce((a, b) => a + b, 0) / Math.max(1, data.length)) * 100)}% | פנים: {Math.round((indoorVals.reduce((a, b) => a + b, 0) / Math.max(1, data.length)) * 100)}%
+                        </span>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 6: מורכבות חזותית (Visual Complexity)
+        // ==========================================
+        const VisualComplexity = ({ images }) => {
+            const [ttip, setTtip] = useState(null);
+            const contRefV = useRef(null);
+            const data = images.map(img => {
+                const count = img.parsedMetadata.Objects ? img.parsedMetadata.Objects.split(',').length : 0;
+                return { page: img.image_num, count };
+            });
+            const maxObjects = Math.max(...data.map(d => d.count)) || 10;
+            const createPath = (data, w, h) => {
+                if(!data.length) return '';
+                let d = '';
+                data.forEach((p, i) => { const x = i*(w/(data.length-1)); const y = h-((p.count/maxObjects)*h); if(i===0) d+=`M ${x} ${y}`; else d+=` L ${x} ${y}`; });
+                return d;
+            };
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-chart-scatter" iconColor="text-orange-500" he="צפיפות ומורכבות חזותית" en="Visual Density & Complexity" />
+                    <BilingualTheoryBox 
+                        titleHe="מדד הרעש החזותי"
+                        titleEn="Visual Clutter Index"
+                        fields="image_num & Count of Objects"
+                        algoHe="ספירת כמות האובייקטים השונים שזוהו בכל תמונה (קבוצות מופרדות בפסיקים) כדי לייצר ציון 'עומס' סקלרי. משורטט כגרף קו (Line Chart)."
+                        algoEn="Counting the number of distinct objects identified in each image (comma-separated lists) to generate a scalar 'clutter' score. Plotted as a line chart."
+                        claimHe="מזהה את קצב העריכה החומרית. האם התמונות מינימליסטיות ונקיות (ציון נמוך, למשל קיר או דיוקן בודד) או שוקקות ורועשות (ציון גבוה, רחוב סואן או שדה קרב עמוס פריטים)?"
+                        claimEn="Identifies the rhythm of material editing. Are the images minimalist and clean (low score, e.g., a blank wall or solo portrait) or bustling and noisy (high score, e.g., a busy street or cluttered battlefield)?"
+                    />
+                    <div ref={contRefV} className="relative w-full h-32 bg-slate-50 border-b-2 border-slate-300 border-l border-slate-200 mt-6 cursor-crosshair"
+                        onMouseMove={(e) => { const r=contRefV.current?.getBoundingClientRect(); if(!r) return; const idx=Math.max(0,Math.min(data.length-1,Math.round(((e.clientX-r.left)/r.width)*(data.length-1)))); const pt=data[idx]; const img=images[idx]; const objs=(img?.parsedMetadata.Objects||'').split(',').map(x=>x.trim()).filter(Boolean).slice(0,5).join(', '); setTtip({x:e.clientX,y:e.clientY,content:`עמוד ${pt.page} — ${pt.count} אובייקטים${objs?'\n'+objs:''}`}); }}
+                        onMouseLeave={() => setTtip(null)}>
+                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 160">
+                            <path d={createPath(data, 1000, 150)} fill="none" stroke="#f97316" strokeWidth="3" strokeLinejoin="round" />
+                            {data.map((point, i) => <circle key={i} cx={(i/(data.length-1))*1000} cy={160-((point.count/maxObjects)*150)} r="2" fill="#ea580c" />)}
+                        </svg>
+                        <div className="absolute top-1 left-2 text-[10px] text-slate-400 font-bold">עמוס (Max: {maxObjects})</div>
+                        <div className="absolute bottom-1 left-2 text-[10px] text-slate-400 font-bold">ריק (0)</div>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 7: טביעת אצבע (Album Fingerprint)
+        // ==========================================
+        const AlbumFingerprint = ({ images }) => {
+            const stats = useMemo(() => {
+                let totalPeople = 0; let totalObj = 0; let totalTextWords = 0; let outdoorCount = 0; let indoorCount = 0;
+                images.forEach(img => {
+                    const m = img.parsedMetadata;
+                    const p = m.People; if(p==='1') totalPeople+=1; else if(p==='2') totalPeople+=2; else if(p==='5+') totalPeople+=5;
+                    if(m.Objects) totalObj += m.Objects.split(',').length;
+                    if(m.Caption) totalTextWords += m.Caption.split(' ').length;
+                    if(m.Text) totalTextWords += m.Text.split(' ').length;
+                    if(m.Scene && m.Scene.includes('outdoor')) outdoorCount++;
+                    if(m.Scene && m.Scene.includes('indoor')) indoorCount++;
+                });
+                const N = images.length || 1;
+                return {
+                    peopleScore: Math.min(100, (totalPeople / (N*5))*100),
+                    clutterScore: Math.min(100, (totalObj / (N*15))*100),
+                    textScore: Math.min(100, (totalTextWords / (N*50))*100),
+                    outdoorScore: (outdoorCount+indoorCount>0) ? (outdoorCount/(outdoorCount+indoorCount))*100 : 0
+                };
+            }, [images]);
+
+            return (
+                <div className="bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-700 text-white">
+                    <VizTitle icon="ph-fill ph-fingerprint" iconColor="text-emerald-400" he="טביעת אצבע סמנטית" en="Album Fingerprint" />
+                    <BilingualTheoryBox 
+                        titleHe="תעודת הזהות המצטברת של הקורפוס"
+                        titleEn="Aggregate Corpus Identity Card"
+                        fields="Aggregated: People, Objects, Text, Scene"
+                        algoHe="שקלול הממוצעים הגלובליים של האלבום לארבעה צירי זהות מרכזיים, ונרמולם לסולם סטנדרטי של 0 עד 100% כדי לאפשר השוואה עתידית הוגנת."
+                        algoEn="Weighting the global averages of the album across four core identity axes, and normalizing them to a standard 0 to 100% scale to allow fair future comparison."
+                        claimHe="מייצר פרופיל אישיותי לאלבום השלם. האם הוא נוטה לטקסטואליות כבדה או מציג תמונות 'נקיות'? האם הוא מרוכז בנוכחות אנושית (דיוקנאות והמונים) או מתמקד בחומריות ומרחב?"
+                        claimEn="Generates a personality profile for the entire album. Does it lean towards heavy textuality or present 'clean' images? Is it focused on human presence or does it highlight materiality and space?"
+                    />
+                    {(() => { const [ttipFP, setTtipFP] = React.useState(null); return (
+                    <div className="space-y-6 mt-8">
+                        {[{label:'נוכחות אנושית (Human Presence)', score:stats.peopleScore, color:'bg-blue-400', descHe:'ממוצע ערך People בכל תמונות האלבום', descEn:'Avg people density'},
+                          {label:'עומס חומרי (Material Clutter)', score:stats.clutterScore, color:'bg-orange-400', descHe:'ממוצע מספר אובייקטים לתמונה', descEn:'Avg objects per image'},
+                          {label:'משקל טקסטואלי (Textual Weight)', score:stats.textScore, color:'bg-amber-400', descHe:'ממוצע מילים בכיתוב + OCR לתמונה', descEn:'Avg words in caption + OCR'},
+                          {label:'דומיננטיות חוץ (Outdoor Dominance)', score:stats.outdoorScore, color:'bg-teal-400', descHe:'אחוז תמונות בחוץ מתוך חוץ+פנים', descEn:'% outdoor of outdoor+indoor'}].map(item => (
+                            <div key={item.label}
+                                onMouseEnter={e => setTtipFP({x:e.clientX,y:e.clientY,content:`${item.label}\n${item.score.toFixed(1)}%\n${item.descHe}`})}
+                                onMouseMove={e => setTtipFP(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                onMouseLeave={() => setTtipFP(null)}>
+                                <div className="flex justify-between text-sm mb-1 font-bold"><span className="text-slate-300">{item.label}</span> <span>{item.score.toFixed(0)}%</span></div>
+                                <div className="h-4 bg-slate-700 rounded-full overflow-hidden"><div className={`h-full ${item.color}`} style={{width: `${item.score}%`}}></div></div>
+                            </div>
+                        ))}
+                        <ChartTooltip tooltip={ttipFP} />
+                    </div>
+                    ); })()}
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 8: קווי רכס (Lexical Ridgeline)
+        // ==========================================
+        const LexicalRidgeline = ({ images, onTagClick }) => {
+            const [ttip, setTtip] = useState(null);
+            const data = useMemo(() => {
+                const objectPages = {};
+                const maxPage = Math.max(...images.map(img => img.image_num)) || 100;
+                images.forEach(img => {
+                    if(img.parsedMetadata.Objects) {
+                        img.parsedMetadata.Objects.split(',').forEach(o => {
+                            const obj = o.trim().toLowerCase();
+                            if(!objectPages[obj]) objectPages[obj] = [];
+                            objectPages[obj].push(img.image_num);
+                        });
+                    }
+                });
+                const topObjects = Object.entries(objectPages).sort((a,b) => b[1].length - a[1].length).slice(0, 5).map(x => ({ name: x[0], pages: x[1] }));
+                return { topObjects, maxPage };
+            }, [images]);
+
+            const createRidgePath = (pages, maxPage, width, height) => {
+                const bins = new Array(20).fill(0);
+                pages.forEach(p => { const binIdx = Math.min(19, Math.floor((p / maxPage) * 20)); bins[binIdx]++; });
+                let d = `M 0 ${height}`;
+                const maxBin = Math.max(...bins) || 1;
+                bins.forEach((val, i) => { d += ` L ${i*(width/19)} ${height - ((val/maxBin)*(height-10))}`; });
+                return d + ` L ${width} ${height} Z`;
+            };
+
+            const colors = ['rgba(239, 68, 68, 0.7)', 'rgba(59, 130, 246, 0.7)', 'rgba(16, 185, 129, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(139, 92, 246, 0.7)'];
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-chart-line-up" iconColor="text-indigo-600" he="קווי רכס אובייקטים" en="Object Ridgelines" />
+                    <BilingualTheoryBox 
+                        titleHe="גליות של אובייקטים בזמן"
+                        titleEn="Waves of Objects over Time (Joyplot)"
+                        fields="image_num & Top 5 Objects"
+                        fieldMapHe={[
+                            { field: 'Objects', action: 'מחלץ את כל האובייקטים מכל עמוד, מחשב תדירות ומבחר את 5 האובייקטים השכיחים ביותר.' },
+                            { field: 'image_num', action: 'ממקם כל הופעת אובייקט לאורך ציר הדפים ומבצע דחיסה ל-20 bins זמן.' }
+                        ]}
+                        fieldMapEn={[
+                            { field: 'Objects', action: 'Extracts all objects, computes frequency, and selects the top 5 most frequent object terms.' },
+                            { field: 'image_num', action: 'Places each object occurrence on the page axis and compresses it into 20 temporal bins.' }
+                        ]}
+                        stepsHe={[
+                            'המערכת בוחרת את 5 האובייקטים הנפוצים ביותר באלבום כולו.',
+                            'לכל אובייקט נספרת כמות הופעות בכל אחד מ-20 מקטעי זמן.',
+                            'קו הרכס מציג את צפיפות ההופעה: פסגה גבוהה = ריכוז עמודים גבוה במקטע נתון.'
+                        ]}
+                        stepsEn={[
+                            'The model selects the 5 most frequent objects in the full album.',
+                            'For each object, occurrences are counted in each of 20 temporal bins.',
+                            'Ridge height encodes local concentration: taller peaks mean stronger clustering in that segment.'
+                        ]}
+                        algoHe="הדמיית ridgeline של צפיפות הופעת אובייקטים לאורך זמן: כל רכס מייצג אובייקט אחד, וצורתו מתארת מתי האובייקט מרוכז ומתי כמעט נעלם."
+                        algoEn="Ridgeline density visualization for object occurrences over time: each ridge is one object, and its shape shows where the object concentrates or fades."
+                        claimHe="הגרף לא מציג רק 'כמה פעמים' אלא 'מתי' כל אובייקט שולט בנרטיב. כך אפשר לזהות פרקי-אלבום שבהם מערכת חזותית אחת עולה ואחרת דועכת."
+                        claimEn="The plot shows not only 'how often' but 'when' each object dominates the narrative, exposing album phases where one visual regime rises while another declines."
+                    />
+                    
+                    <div className="relative w-full mt-8" style={{ height: `${data.topObjects.length * 40 + 40}px` }}>
+                        <svg className="w-full h-full" preserveAspectRatio="none">
+                            {data.topObjects.map((obj, idx) => (
+                                <g key={obj.name} transform={`translate(0, ${idx * 40})`}
+                                    onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`${obj.name}\n${obj.pages.length} הופעות`})}
+                                    onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                    onMouseLeave={() => setTtip(null)}>
+                                    <text x="0" y="35" fontSize="12" fill="#475569" fontWeight="bold" className="capitalize cursor-pointer hover:fill-indigo-600" onClick={()=>onTagClick&&onTagClick(obj.name, 'Objects')}>{obj.name}</text>
+                                    <line x1="80" y1="40" x2="1000" y2="40" stroke="#cbd5e1" strokeWidth="1" />
+                                    <path d={createRidgePath(obj.pages, data.maxPage, 920, 40)} transform="translate(80, 0)" fill={colors[idx]} stroke="white" strokeWidth="1" className="transition-opacity hover:opacity-100 opacity-80 cursor-pointer" onClick={()=>onTagClick&&onTagClick(obj.name, 'Objects')} />
+                                </g>
+                            ))}
+                        </svg>
+                    </div>
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 px-1">
+                        {data.topObjects.map((obj, idx) => (
+                            <div key={obj.name} className="flex items-center gap-2 text-xs font-bold text-slate-600 capitalize cursor-pointer hover:text-indigo-600" onClick={() => onTagClick && onTagClick(obj.name, 'Objects')}>
+                                <span className="w-4 h-4 rounded-sm shrink-0 border border-white/50 shadow-sm" style={{backgroundColor: colors[idx]}}></span>
+                                {obj.name}
+                                <span className="font-normal text-slate-400">({obj.pages.length})</span>
+                            </div>
+                        ))}
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 9: מטריצת בימוי (Co-occurrence)
+        // ==========================================
+        const CoOccurrenceMatrix = ({ images }) => {
+            const [ttip, setTtip] = useState(null);
+            const matrixData = useMemo(() => {
+                const coOccurrence = {}; const sceneCounts = {}; const objectCounts = {};
+                images.forEach(img => {
+                    const m = img.parsedMetadata;
+                    if(!m.Scene || !m.Objects) return;
+                    const scenes = m.Scene.split(',').map(s=>s.trim().toLowerCase());
+                    const objects = m.Objects.split(',').map(o=>o.trim().toLowerCase());
+                    scenes.forEach(s => {
+                        sceneCounts[s] = (sceneCounts[s]||0)+1;
+                        if(!coOccurrence[s]) coOccurrence[s] = {};
+                        objects.forEach(o => {
+                            objectCounts[o] = (objectCounts[o]||0)+1;
+                            coOccurrence[s][o] = (coOccurrence[s][o]||0)+1;
+                        });
+                    });
+                });
+                const topScenes = Object.entries(sceneCounts).sort((a,b)=>b[1]-a[1]).slice(0, 6).map(x=>x[0]);
+                const topObjects = Object.entries(objectCounts).sort((a,b)=>b[1]-a[1]).slice(0, 8).map(x=>x[0]);
+                let maxVal = 1;
+                topScenes.forEach(s => topObjects.forEach(o => { if(coOccurrence[s] && coOccurrence[s][o] > maxVal) maxVal = coOccurrence[s][o]; }));
+                return { topScenes, topObjects, coOccurrence, maxVal };
+            }, [images]);
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-intersect" iconColor="text-emerald-600" he="מטריצת בימוי" en="Staging Matrix (Mise-en-scène)" />
+                    <BilingualTheoryBox 
+                        titleHe="רשת קשרים של נוכחות משותפת"
+                        titleEn="Co-occurrence Network Heatmap"
+                        fields="Cross-tabulation: Scene x Objects"
+                        algoHe="הצלבת נתונים דו-ממדית. עבור כל עמוד, בודק אילו אובייקטים הופיעו במשותף עם אילו זירות. צבע התא במטריצה (Heatmap) מנורמל אל מול תא המקסימום."
+                        algoEn="Two-dimensional cross-tabulation. For each page, checks which objects co-occurred with which scenes. The cell color (Heatmap) is normalized against the maximum cell."
+                        claimHe="בוחן את תהליכי הבימוי. האם האלבום מגביל אובייקטים מסוימים למרחבים ספציפיים? (למשל, ילדים מופיעים רק במרחב הבית, נשק רק בשדה פתוח). המטריצה חושפת את הקשרים הנסתרים של הבימוי הלאומי."
+                        claimEn="Examines directing processes. Does the album restrict certain objects to specific spaces? (e.g., children only at home, weapons only in open fields). The matrix reveals the hidden ties of national mise-en-scène."
+                    />
+                    <div className="overflow-x-auto mt-6" dir="ltr">
+                        <table className="w-full border-collapse">
+                            <thead>
+                                <tr><th className="p-2 text-right text-xs text-slate-400">Objects \ Scenes</th>{matrixData.topScenes.map(scene => <th key={scene} className="p-2 text-center text-xs font-bold text-slate-700 capitalize border-b border-slate-200">{scene}</th>)}</tr>
+                            </thead>
+                            <tbody>
+                                {matrixData.topObjects.map(obj => (
+                                    <tr key={obj}>
+                                        <td className="p-2 text-right text-xs font-bold text-slate-700 capitalize border-r border-slate-200 pr-4">{obj}</td>
+                                        {matrixData.topScenes.map(scene => {
+                                            const val = (matrixData.coOccurrence[scene] && matrixData.coOccurrence[scene][obj]) || 0;
+                                            const intensity = val / matrixData.maxVal;
+                                            return (
+                                                <td key={`${obj}-${scene}`} className="p-1">
+                                                    <div className="h-8 rounded flex items-center justify-center text-xs font-mono transition-all hover:scale-110" style={{ backgroundColor: val>0 ? `rgba(16, 185, 129, ${0.1+intensity*0.9})` : '#f8fafc', color: intensity>0.5 ? 'white' : (val>0 ? '#047857' : '#cbd5e1') }}
+                                                        onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`${obj} ב-${scene}\n${val} הופעות משותפות`})}
+                                                        onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                                        onMouseLeave={() => setTtip(null)}>{val>0?val:''}</div>
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 10: מפת עץ היררכית (Treemap)
+        // ==========================================
+        const HierarchicalTreemap = ({ images }) => {
+            const data = useMemo(() => {
+                const scenes = {}; let total = 0;
+                images.forEach(img => {
+                    const m = img.parsedMetadata;
+                    if(m.Scene) {
+                        const sceneName = m.Scene.split(',')[0].trim().toLowerCase();
+                        if(!scenes[sceneName]) scenes[sceneName] = { count: 0, objects: {} };
+                        scenes[sceneName].count++; total++;
+                        if(m.Objects) { m.Objects.split(',').forEach(o => { scenes[sceneName].objects[o.trim().toLowerCase()] = (scenes[sceneName].objects[o.trim().toLowerCase()]||0)+1; }); }
+                    }
+                });
+                return Object.entries(scenes).map(([name, node]) => ({ name, count: node.count, topObj: Object.entries(node.objects).sort((a,b)=>b[1]-a[1]).slice(0, 3).map(x=>x[0]).join(', '), weight: (node.count/total)*100 })).sort((a,b) => b.weight - a.weight).slice(0, 8);
+            }, [images]);
+
+            const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#10b981', '#14b8a6'];
+            const [ttip, setTtip] = useState(null);
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-squares-four" iconColor="text-pink-600" he="מפת עץ היררכית" en="Hierarchical Treemap" />
+                    <BilingualTheoryBox 
+                        titleHe="חלוקת נדלן מרחבית"
+                        titleEn="Spatial Real Estate Division"
+                        fields="Scene (Parent Area) & Objects (Child Labels)"
+                        algoHe="יצירת מלבנים בעלי שטח פרופורציונלי לתדירות המוחלטת של הסצנה באלבום. בתוך כל שטח 'נדלן' מחושבים ומודפסים אובייקטי-הליבה של אותו אזור."
+                        algoEn="Creating rectangles with areas proportional to the absolute frequency of the scene in the album. Within each 'real estate' area, the core objects of that region are calculated and printed."
+                        claimHe="ממחיש את חלוקת המשקל של החללים המיוצגים באלבום. אם 'שדה הקרב' תופס 60% מהשטח הויזואלי ו'העיר' רק 10%, אנו מבינים את סדר העדיפויות הלאומי במבט אחד מהיר."
+                        claimEn="Illustrates the weight distribution of the spaces represented in the album. If the 'battlefield' takes up 60% of the visual space and the 'city' only 10%, we grasp the national priorities at a single quick glance."
+                    />
+                    <div className="flex flex-wrap gap-2 h-64 mt-6">
+                        {data.map((scene, idx) => (
+                            <div key={scene.name} className="treemap-node rounded-xl p-4 flex flex-col justify-between text-white overflow-hidden relative cursor-pointer" style={{ width: `calc(${scene.weight}% - 0.5rem)`, minWidth: '120px', flexGrow: scene.weight, backgroundColor: colors[idx % colors.length] }}
+                                onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`${scene.name}\n${scene.count} עמודים (${scene.weight.toFixed(1)}%)\nעצמים: ${scene.topObj}`})}
+                                onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                onMouseLeave={() => setTtip(null)}>
+                                <span className="text-base font-black capitalize drop-shadow-md">{scene.name}</span>
+                                <div className="mt-2 text-[11px] leading-tight opacity-90 border-t border-white/30 pt-2"><strong>מרכיבים מרכזיים:</strong><br/>{scene.topObj}</div>
+                                <span className="absolute bottom-2 left-3 text-3xl font-black opacity-20">{scene.count}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 11: זרמי סצנות (Scene Streamgraph)
+        // ==========================================
+        const SceneStreamgraph = ({ images, onTagClick }) => {
+            const [ttip, setTtip] = useState(null);
+            const data = useMemo(() => {
+                const pages = images.map(img => ({
+                    page: img.image_num,
+                    scene: primaryScene(img.parsedMetadata.Scene)
+                })).sort((a, b) => a.page - b.page);
+
+                const sceneCounts = {};
+                pages.forEach(p => { sceneCounts[p.scene] = (sceneCounts[p.scene] || 0) + 1; });
+                const topScenes = Object.entries(sceneCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name]) => name);
+
+                const binCount = Math.min(28, Math.max(14, Math.round(pages.length / 4)));
+                const matrix = {};
+                topScenes.forEach(scene => { matrix[scene] = new Array(binCount).fill(0); });
+
+                pages.forEach((p, idx) => {
+                    if (!matrix[p.scene]) return;
+                    const bin = Math.min(binCount - 1, Math.floor((idx / Math.max(1, pages.length)) * binCount));
+                    matrix[p.scene][bin] += 1;
+                });
+
+                const binTotals = new Array(binCount).fill(0);
+                topScenes.forEach(scene => {
+                    matrix[scene].forEach((v, i) => { binTotals[i] += v; });
+                });
+
+                const stacked = {};
+                const cumulative = new Array(binCount).fill(0);
+                topScenes.forEach(scene => {
+                    const lower = [];
+                    const upper = [];
+                    for (let i = 0; i < binCount; i++) {
+                        const frac = binTotals[i] ? matrix[scene][i] / binTotals[i] : 0;
+                        lower.push(cumulative[i]);
+                        cumulative[i] += frac;
+                        upper.push(cumulative[i]);
+                    }
+                    stacked[scene] = { lower, upper };
+                });
+
+                return { topScenes, stacked, binCount };
+            }, [images]);
+
+            const makeAreaPath = (lower, upper, width, height) => {
+                if (!upper.length) return '';
+                const step = upper.length > 1 ? width / (upper.length - 1) : width;
+                let d = `M 0 ${height - upper[0] * height}`;
+                for (let i = 1; i < upper.length; i++) {
+                    d += ` L ${i * step} ${height - upper[i] * height}`;
+                }
+                for (let i = lower.length - 1; i >= 0; i--) {
+                    d += ` L ${i * step} ${height - lower[i] * height}`;
+                }
+                return `${d} Z`;
+            };
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-wave-sawtooth" iconColor="text-cyan-600" he="זרמי סצנות לאורך זמן" en="Scene Streams Over Time" />
+                    <BilingualTheoryBox
+                        titleHe="זרם נושאי-מרחבי"
+                        titleEn="Spatial Topic Stream"
+                        fields="image_num, Scene"
+                        fieldMapHe={[
+                            { field: 'image_num', action: 'מחלק את האלבום למקטעי זמן שווים.' },
+                            { field: 'Scene', action: 'סופר בכל מקטע מה היחס של כל סצנה מתוך כלל הסצנות במקטע.' }
+                        ]}
+                        fieldMapEn={[
+                            { field: 'image_num', action: 'Partitions the album into equal temporal bins.' },
+                            { field: 'Scene', action: 'Computes per-bin proportional scene share among all scene-labeled pages.' }
+                        ]}
+                        stepsHe={[
+                            'בחירת 6 הסצנות השכיחות בקורפוס.',
+                            'חישוב פרופורציה לכל סצנה בכל bin זמן.',
+                            'הצגה כזרמים מצטברים המראים מי שולט בכל פרק באלבום.'
+                        ]}
+                        stepsEn={[
+                            'Select the 6 most frequent scenes in the corpus.',
+                            'Compute each scene\'s proportional share per temporal bin.',
+                            'Render stacked streams to reveal dominance shifts across album phases.'
+                        ]}
+                        algoHe="מודל streamgraph יחסי: בכל מקטע זמן גובה הזרם מייצג חלק יחסי של סצנה מתוך כלל הסצנות במקטע."
+                        algoEn="Relative streamgraph model: stream thickness per bin represents each scene\'s share of all scenes in that temporal slice."
+                        claimHe="מבליט תנודות של משטרי ייצוג מרחביים לאורך האלבום, בדומה לויזואליזציות topic-stream במחקרי distant reading/viewing."
+                        claimEn="Highlights shifts in spatial representational regimes over time, inspired by topic-stream approaches in distant reading/viewing."
+                    />
+
+                    <div className="flex flex-wrap gap-3 mt-6 mb-4">
+                        {data.topScenes.map(scene => (
+                            <button key={scene} onClick={() => onTagClick && onTagClick(scene, 'Scene')} className="px-2 py-1 rounded-md text-xs font-bold text-white capitalize" style={{ backgroundColor: sceneColor(scene) }}>
+                                {scene}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="w-full h-64 border border-slate-300 rounded-xl bg-slate-50 overflow-hidden">
+                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 1200 260"
+                            onMouseMove={e => {
+                                const r = e.currentTarget.getBoundingClientRect();
+                                const xFrac = (e.clientX - r.left) / r.width;
+                                const binIdx = Math.min(data.binCount - 1, Math.floor(xFrac * data.binCount));
+                                const yFrac = (e.clientY - r.top) / r.height;
+                                const stackedAt = data.topScenes.map(s => ({ scene: s, upper: data.stacked[s].upper[binIdx] || 0 }));
+                                const hit = [...stackedAt].reverse().find(s => (1 - yFrac) <= s.upper);
+                                setTtip({x:e.clientX,y:e.clientY,content:hit ? `${hit.scene}\nמקטע ${binIdx+1}/${data.binCount}` : ''});
+                            }}
+                            onMouseLeave={() => setTtip(null)}>
+                            {data.topScenes.map(scene => (
+                                <path
+                                    key={scene}
+                                    d={makeAreaPath(data.stacked[scene].lower, data.stacked[scene].upper, 1200, 240)}
+                                    fill={sceneColor(scene)}
+                                    opacity="0.75"
+                                />
+                            ))}
+                        </svg>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 12: פילוח נרטיבי אוטומטי
+        // ==========================================
+        const NarrativeSegmentation = ({ images }) => {
+            const [ttipN, setTtipN] = useState(null);
+            const contRefN = useRef(null);
+            const data = useMemo(() => {
+                const pages = images
+                    .map(img => ({
+                        page: img.image_num,
+                        scene: primaryScene(img.parsedMetadata.Scene),
+                        vibe: primaryVibe(img.parsedMetadata.Vibe),
+                        objectSet: new Set((img.parsedMetadata.Objects || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean))
+                    }))
+                    .sort((a, b) => a.page - b.page);
+
+                const scores = [0];
+                for (let i = 1; i < pages.length; i++) {
+                    const prev = pages[i - 1];
+                    const curr = pages[i];
+                    const sceneShift = prev.scene === curr.scene ? 0 : 1;
+                    const vibeShift = prev.vibe === curr.vibe ? 0 : 1;
+                    const objShift = jaccardDistance(prev.objectSet, curr.objectSet);
+                    scores.push(0.35 * sceneShift + 0.25 * vibeShift + 0.4 * objShift);
+                }
+
+                const mean = scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length);
+                const variance = scores.reduce((a, b) => a + ((b - mean) ** 2), 0) / Math.max(1, scores.length);
+                const std = Math.sqrt(variance);
+                const threshold = mean + std * 0.7;
+
+                const breakpoints = [];
+                scores.forEach((score, idx) => {
+                    if (idx > 0 && score >= threshold) breakpoints.push(idx);
+                });
+
+                const segments = [];
+                let start = 0;
+                breakpoints.forEach(bp => {
+                    segments.push({ start, end: bp });
+                    start = bp + 1;
+                });
+                if (pages.length) segments.push({ start, end: pages.length - 1 });
+
+                return { pages, scores, breakpoints, threshold, segments };
+            }, [images]);
+
+            const linePath = useMemo(() => {
+                if (!data.scores.length) return '';
+                if (data.scores.length === 1) return 'M 0 140 L 1000 140';
+                const step = 1000 / (data.scores.length - 1);
+                let d = '';
+                data.scores.forEach((s, i) => {
+                    const x = i * step;
+                    const y = 150 - (s * 130);
+                    d += `${i === 0 ? 'M' : 'L'} ${x} ${y} `;
+                });
+                return d;
+            }, [data.scores]);
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-split-horizontal" iconColor="text-fuchsia-600" he="פילוח נרטיבי אוטומטי" en="Automatic Narrative Segmentation" />
+                    <BilingualTheoryBox
+                        titleHe="חיתוך אוטומטי של פרקי האלבום"
+                        titleEn="Automatic Album Segmentation"
+                        fields="image_num, Scene, Vibe, Objects"
+                        fieldMapHe={[
+                            { field: 'image_num', action: 'מסדר את השוואות השינוי בין עמוד עוקב לעמוד עוקב.' },
+                            { field: 'Scene + Vibe', action: 'מודד קפיצה קטגוריאלית בין עמודים סמוכים.' },
+                            { field: 'Objects', action: 'מודד מרחק לקסיקלי (Jaccard) בין סטי אובייקטים סמוכים.' }
+                        ]}
+                        fieldMapEn={[
+                            { field: 'image_num', action: 'Defines adjacent page-to-page comparisons across the album timeline.' },
+                            { field: 'Scene + Vibe', action: 'Measures categorical jumps between neighboring pages.' },
+                            { field: 'Objects', action: 'Computes lexical set distance (Jaccard) between adjacent object sets.' }
+                        ]}
+                        stepsHe={[
+                            'לכל זוג עמודים עוקבים מחושב ציון שינוי משוקלל בטווח 0..1.',
+                            'נקודת שבר מסומנת כאשר ציון השינוי גבוה מסף סטטיסטי (ממוצע + 0.7 סטיית תקן).',
+                            'המערכת מפיקה פרקי-אלבום רציפים ומציגה את גבולותיהם.'
+                        ]}
+                        stepsEn={[
+                            'A weighted page-to-page change score is computed in the 0..1 range.',
+                            'A breakpoint is flagged when the score exceeds a statistical threshold (mean + 0.7 SD).',
+                            'Continuous album segments are emitted and rendered as narrative phases.'
+                        ]}
+                        algoHe="אלגוריתם סגמנטציה המבוסס על שינוי סמנטי בין עמודים סמוכים, ולא על ספירה מצטברת בלבד."
+                        algoEn="Segmentation algorithm based on adjacent semantic change rather than aggregate counting alone."
+                        claimHe="מאפשר לזהות פרקים מובחנים בתוך האלבום ולבדוק אם סדר העמודים יוצר מהלך נרטיבי מכוון."
+                        claimEn="Reveals distinct phases in the album and tests whether page ordering encodes an intentional narrative arc."
+                    />
+
+                    <div ref={contRefN} className="relative w-full h-44 mt-6 bg-slate-50 border border-slate-300 rounded-xl overflow-hidden cursor-crosshair"
+                        onMouseMove={(e) => { const r=contRefN.current?.getBoundingClientRect(); if(!r) return; const idx=Math.max(0,Math.min(data.scores.length-1,Math.round(((e.clientX-r.left)/r.width)*(data.scores.length-1)))); const pg=data.pages[idx]; const sc=data.scores[idx]; const isBp=data.breakpoints.includes(idx); setTtipN({x:e.clientX,y:e.clientY,content:`עמוד ${pg?.page||idx+1}\nציון שינוי: ${sc.toFixed(3)}${isBp?'\n⚡ נקודת שבר!':''}\nסצנה: ${pg?.scene||'?'} | אווירה: ${pg?.vibe||'?'}`}); }}
+                        onMouseLeave={() => setTtipN(null)}>
+                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 170">
+                            <line x1="0" y1={150 - data.threshold * 130} x2="1000" y2={150 - data.threshold * 130} stroke="#f43f5e" strokeDasharray="5 5" />
+                            <path d={linePath} fill="none" stroke="#7c3aed" strokeWidth="3" />
+                            {data.breakpoints.map(bp => (
+                                <line key={`bp-${bp}`} x1={(bp / Math.max(1, data.scores.length - 1)) * 1000} y1="0" x2={(bp / Math.max(1, data.scores.length - 1)) * 1000} y2="170" stroke="#ef4444" strokeWidth="1.5" />
+                            ))}
+                        </svg>
+                    </div>
+                    <ChartTooltip tooltip={ttipN} />
+
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+                        {data.segments.map((seg, idx) => {
+                            const startPage = data.pages[seg.start]?.page;
+                            const endPage = data.pages[seg.end]?.page;
+                            return (
+                                <div key={`seg-${idx}`} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700">
+                                    פרק {idx + 1}: עמ' {startPage} - {endPage}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 13: מדד אי-ודאות אנוטציה
+        // ==========================================
+        const AnnotationUncertainty = ({ images }) => {
+            const data = useMemo(() => {
+                return images
+                    .map(img => {
+                        const captionSet = toTokenSet(img.parsedMetadata.Caption || '');
+                        const descSet = toTokenSet(img.parsedMetadata.Description || '');
+                        const ocrSet = toTokenSet(img.parsedMetadata.Text || '');
+
+                        const distances = [];
+                        if (captionSet.size && descSet.size) distances.push(jaccardDistance(captionSet, descSet));
+                        if (captionSet.size && ocrSet.size) distances.push(jaccardDistance(captionSet, ocrSet));
+                        if (descSet.size && ocrSet.size) distances.push(jaccardDistance(descSet, ocrSet));
+
+                        const score = distances.length ? distances.reduce((a, b) => a + b, 0) / distances.length : 0;
+                        return {
+                            page: img.image_num,
+                            score,
+                            support: distances.length
+                        };
+                    })
+                    .sort((a, b) => a.page - b.page);
+            }, [images]);
+
+            const maxScore = Math.max(...data.map(d => d.score), 1);
+            const topUncertain = [...data].sort((a, b) => b.score - a.score).slice(0, 8);
+
+            const makePath = (vals, width, height) => {
+                if (!vals.length) return '';
+                if (vals.length === 1) return `M 0 ${height - vals[0] * height} L ${width} ${height - vals[0] * height}`;
+                const step = width / (vals.length - 1);
+                let d = '';
+                vals.forEach((v, i) => {
+                    const x = i * step;
+                    const y = height - v * height;
+                    d += `${i === 0 ? 'M' : 'L'} ${x} ${y} `;
+                });
+                return d;
+            };
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-warning-circle" iconColor="text-rose-600" he="מדד אי-ודאות תיאורי" en="Annotation Uncertainty Index" />
+                    <BilingualTheoryBox
+                        titleHe="אי-התאמה בין שכבות הטקסט"
+                        titleEn="Cross-Channel Annotation Uncertainty"
+                        fields="Caption, Description, Text(OCR), image_num"
+                        fieldMapHe={[
+                            { field: 'Caption + Description + Text', action: 'מייצר סטי מילים לכל שכבה ומודד מרחקים זוגיים בין השכבות.' },
+                            { field: 'image_num', action: 'ממקם את ציון האי-ודאות על ציר לינארי לאורך האלבום.' }
+                        ]}
+                        fieldMapEn={[
+                            { field: 'Caption + Description + Text', action: 'Builds token sets and computes pairwise cross-layer lexical distances.' },
+                            { field: 'image_num', action: 'Places uncertainty scores on a linear album axis.' }
+                        ]}
+                        stepsHe={[
+                            'ניקוי טקסט ופירוק למילים לכל אחת משלוש שכבות הטקסט.',
+                            'חישוב מרחק Jaccard בין כל זוג שכבות קיים באותו עמוד.',
+                            'הממוצע הזוגי הוא ציון אי-ודאות: גבוה = סתירה/פער בין שכבות.'
+                        ]}
+                        stepsEn={[
+                            'Normalize and tokenize each text layer per page.',
+                            'Compute Jaccard distance for every available pair of layers.',
+                            'Pairwise average yields the uncertainty score: high = stronger cross-layer divergence.'
+                        ]}
+                        algoHe="מדד אי-ודאות מולטי-מודאלי על בסיס מרחק לקסיקלי בין Caption, OCR ו-Description."
+                        algoEn="Multimodal uncertainty index using lexical distance across Caption, OCR, and Description."
+                        claimHe="מדגיש עמודים שבהם המכונה והעורך מספרים סיפורים שונים, ולכן נדרשת קריאה ביקורתית קרובה."
+                        claimEn="Flags pages where machine and editorial channels diverge, indicating priority zones for close critical reading."
+                    />
+
+                    {(() => { const [ttipAU, setTtipAU] = React.useState(null); return (
+                    <div className="relative w-full h-36 mt-6 bg-slate-50 border border-slate-300 rounded-xl overflow-hidden cursor-crosshair"
+                        onMouseMove={e => {
+                            const r = e.currentTarget.getBoundingClientRect();
+                            const idx = Math.max(0, Math.min(data.length - 1, Math.round(((e.clientX - r.left) / r.width) * (data.length - 1))));
+                            const item = data[idx];
+                            if (item) setTtipAU({x:e.clientX,y:e.clientY,content:`עמ' ${item.page}\nאי-ודאות: ${item.score.toFixed(3)}\nמקורות: ${item.support} זוגות`});
+                        }}
+                        onMouseLeave={() => setTtipAU(null)}>
+                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 160">
+                            <path d={makePath(data.map(d => d.score / maxScore), 1000, 150)} fill="none" stroke="#e11d48" strokeWidth="3" />
+                        </svg>
+                        <ChartTooltip tooltip={ttipAU} />
+                    </div>
+                    ); })()}
+
+                    <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                        {topUncertain.map(item => (
+                            <div key={`u-${item.page}`} className="px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 font-bold">
+                                עמ' {item.page}: {item.score.toFixed(2)}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 14: רשת שחקנים מרחבית
+        // ==========================================
+        const SceneObjectNetwork = ({ images, onTagClick }) => {
+            const [ttip, setTtip] = useState(null);
+            const data = useMemo(() => {
+                const sceneCounts = {};
+                const objectCounts = {};
+                const edgeCounts = {};
+
+                images.forEach(img => {
+                    const scene = primaryScene(img.parsedMetadata.Scene);
+                    const objects = (img.parsedMetadata.Objects || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+                    if (!objects.length) return;
+                    sceneCounts[scene] = (sceneCounts[scene] || 0) + 1;
+                    objects.forEach(obj => {
+                        objectCounts[obj] = (objectCounts[obj] || 0) + 1;
+                        const edgeKey = `${scene}::${obj}`;
+                        edgeCounts[edgeKey] = (edgeCounts[edgeKey] || 0) + 1;
+                    });
+                });
+
+                const scenes = Object.entries(sceneCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, count]) => ({ name, count }));
+                const objects = Object.entries(objectCounts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([name, count]) => ({ name, count }));
+
+                const sceneSet = new Set(scenes.map(s => s.name));
+                const objectSet = new Set(objects.map(o => o.name));
+                const edges = Object.entries(edgeCounts)
+                    .map(([key, count]) => {
+                        const [scene, obj] = key.split('::');
+                        return { scene, obj, count };
+                    })
+                    .filter(e => sceneSet.has(e.scene) && objectSet.has(e.obj) && e.count >= 2)
+                    .sort((a, b) => b.count - a.count)
+                    .slice(0, 40);
+
+                const maxEdge = Math.max(...edges.map(e => e.count), 1);
+                return { scenes, objects, edges, maxEdge };
+            }, [images]);
+
+            const sceneNodes = data.scenes.map((s, idx) => ({ ...s, x: 200, y: 70 + idx * (420 / Math.max(1, data.scenes.length - 1)) }));
+            const objectNodes = data.objects.map((o, idx) => ({ ...o, x: 1000, y: 70 + idx * (420 / Math.max(1, data.objects.length - 1)) }));
+            const scenePos = Object.fromEntries(sceneNodes.map(n => [n.name, n]));
+            const objectPos = Object.fromEntries(objectNodes.map(n => [n.name, n]));
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <VizTitle icon="ph-fill ph-share-network" iconColor="text-emerald-600" he="רשת שחקנים מרחבית" en="Spatial Actor Network (Scene↔Objects)" />
+                    <BilingualTheoryBox
+                        titleHe="רשת דו-צדדית של סצנות ואובייקטים"
+                        titleEn="Bipartite Scene-Object Network"
+                        fields="Scene, Objects"
+                        fieldMapHe={[
+                            { field: 'Scene', action: 'קובע את צומת המקור המרחבי (זירה).' },
+                            { field: 'Objects', action: 'קובע את צומתי היעד ומחשב משקל קישור לפי שכיחות הופעה משותפת.' }
+                        ]}
+                        fieldMapEn={[
+                            { field: 'Scene', action: 'Defines source-side spatial nodes.' },
+                            { field: 'Objects', action: 'Defines target nodes and computes co-occurrence edge weights.' }
+                        ]}
+                        stepsHe={[
+                            'בחירת סצנות ואובייקטים דומיננטיים בלבד לצמצום רעש.',
+                            'חישוב משקל לכל קשת Scene→Object לפי ספירת הופעות משותפות.',
+                            'עובי וכהות הקשת משקפים חוזק קשר במערכת הבימוי.'
+                        ]}
+                        stepsEn={[
+                            'Select dominant scene and object nodes to suppress tail noise.',
+                            'Compute Scene→Object edge weights by co-occurrence counts.',
+                            'Edge width and opacity encode relationship strength in the mise-en-scene system.'
+                        ]}
+                        algoHe="גרף דו-צדדי משוקלל לחשיפת קואליציות קבועות בין זירות ואובייקטים."
+                        algoEn="Weighted bipartite graph exposing recurrent coalitions between spaces and objects."
+                        claimHe="מאפשר לזהות במהירות אילו אובייקטים 'כלואים' בזירות מסוימות ואילו נודדים בין זירות."
+                        claimEn="Quickly reveals which objects are spatially constrained and which migrate across scene types."
+                    />
+
+                    <div className="overflow-x-auto mt-6" dir="ltr">
+                        <div className="min-w-[1140px] h-[500px] bg-slate-50 border border-slate-300 rounded-xl">
+                            <svg className="w-full h-full" viewBox="0 0 1200 500">
+                                {data.edges.map((edge, idx) => {
+                                    const s = scenePos[edge.scene];
+                                    const o = objectPos[edge.obj];
+                                    if (!s || !o) return null;
+                                    const opacity = 0.15 + (edge.count / data.maxEdge) * 0.85;
+                                    return (
+                                        <path
+                                            key={`edge-${idx}`}
+                                            d={`M ${s.x} ${s.y} C 520 ${s.y}, 680 ${o.y}, ${o.x} ${o.y}`}
+                                            stroke="#0f766e"
+                                            strokeWidth={1 + (edge.count / data.maxEdge) * 4}
+                                            fill="none"
+                                            opacity={opacity}
+                                            className="cursor-pointer"
+                                            onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`${edge.scene} → ${edge.obj}\n${edge.count} הופעות משותפות`})}
+                                            onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                            onMouseLeave={() => setTtip(null)}
+                                        />
+                                    );
+                                })}
+
+                                {sceneNodes.map(node => (
+                                    <g key={`scene-${node.name}`} onClick={() => onTagClick && onTagClick(node.name, 'Scene')} className="cursor-pointer"
+                                        onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`סצנה: ${node.name}\n${node.count} עמודים`})}
+                                        onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                        onMouseLeave={() => setTtip(null)}>
+                                        <circle cx={node.x} cy={node.y} r="10" fill={sceneColor(node.name)} />
+                                        <text x={node.x - 14} y={node.y + 4} textAnchor="end" fontSize="12" fill="#0f172a" className="capitalize font-bold">{node.name}</text>
+                                    </g>
+                                ))}
+
+                                {objectNodes.map(node => (
+                                    <g key={`obj-${node.name}`} onClick={() => onTagClick && onTagClick(node.name, 'Objects')} className="cursor-pointer"
+                                        onMouseEnter={e => setTtip({x:e.clientX,y:e.clientY,content:`אובייקט: ${node.name}\n${node.count} הופעות`})}
+                                        onMouseMove={e => setTtip(p => p ? {...p,x:e.clientX,y:e.clientY} : null)}
+                                        onMouseLeave={() => setTtip(null)}>
+                                        <circle cx={node.x} cy={node.y} r="8" fill="#2563eb" />
+                                        <text x={node.x + 14} y={node.y + 4} textAnchor="start" fontSize="12" fill="#1e293b" className="capitalize font-bold">{node.name}</text>
+                                    </g>
+                                ))}
+                            </svg>
+                        </div>
+                    </div>
+                    <ChartTooltip tooltip={ttip} />
+                </div>
+            );
+        };
+
+        const SmallMultiplesComparison = ({ albums }) => {
+            const data = useMemo(() => {
+                const binCount = 24;
+                const byAlbum = albums.map(album => {
+                    const images = [...album.images].sort((a, b) => a.image_num - b.image_num);
+                    const bins = new Array(binCount).fill(null).map(() => ({ p: [], c: [], t: [] }));
+                    images.forEach((img, idx) => {
+                        const b = Math.min(binCount - 1, Math.floor((idx / Math.max(1, images.length)) * binCount));
+                        bins[b].p.push(toPeopleValue(img.parsedMetadata.People));
+                        bins[b].c.push((img.parsedMetadata.Objects || '').split(',').map(x => x.trim()).filter(Boolean).length);
+                        bins[b].t.push(tokenize(img.parsedMetadata.Caption || '').length + tokenize(img.parsedMetadata.Text || '').length);
+                    });
+                    const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+                    return {
+                        title: album.album.title_en || album.album.title_he || 'Untitled Album',
+                        people: bins.map(x => avg(x.p)),
+                        complexity: bins.map(x => avg(x.c)),
+                        textual: bins.map(x => avg(x.t))
+                    };
+                });
+
+                const maxPeople = Math.max(...byAlbum.flatMap(x => x.people), 1);
+                const maxComplexity = Math.max(...byAlbum.flatMap(x => x.complexity), 1);
+                const maxTextual = Math.max(...byAlbum.flatMap(x => x.textual), 1);
+
+                return byAlbum.map(a => ({
+                    ...a,
+                    peopleN: a.people.map(v => v / maxPeople),
+                    complexityN: a.complexity.map(v => v / maxComplexity),
+                    textualN: a.textual.map(v => v / maxTextual)
+                }));
+            }, [albums]);
+
+            const sparkPath = (values, width, height) => {
+                if (!values.length) return '';
+                if (values.length === 1) return `M 0 ${height - values[0] * height} L ${width} ${height - values[0] * height}`;
+                const step = width / (values.length - 1);
+                let d = '';
+                values.forEach((v, i) => {
+                    d += `${i === 0 ? 'M' : 'L'} ${i * step} ${height - v * height} `;
+                });
+                return d;
+            };
+
+            return (
+                <div className="space-y-5">
+                    {data.map((album, idx) => (
+                        <div key={`sm-${idx}`} className="bg-white border border-slate-200 rounded-2xl p-5">
+                            <h4 className="text-base font-black text-slate-800 mb-3">{album.title}</h4>
+                            {[{ label: 'People Density', values: album.peopleN, color: '#2563eb' }, { label: 'Object Complexity', values: album.complexityN, color: '#ea580c' }, { label: 'Textual Weight', values: album.textualN, color: '#ca8a04' }].map((row) => (
+                                <div key={`${album.title}-${row.label}`} className="mb-3">
+                                    <div className="text-[11px] font-bold text-slate-500 mb-1">{row.label}</div>
+                                    <div className="h-14 border border-slate-200 rounded bg-slate-50">
+                                        <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 900 56">
+                                            <path d={sparkPath(row.values, 900, 50)} fill="none" stroke={row.color} strokeWidth="2.5" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        // ==========================================
+        // TAB 0: ספריה (Library)
+        // ==========================================
+        const LibraryTab = ({ albums, onGallery, onAnalyze, lang='he' }) => {
+            const [search, setSearch] = useState('');
+            const [sortBy, setSortBy] = useState('year');
+            const [sortDir, setSortDir] = useState('asc');
+
+            const filtered = useMemo(() => {
+                const q = search.trim().toLowerCase();
+                let list = albums.map((al, idx) => ({ al, idx }));
+                if (q) {
+                    list = list.filter(({ al }) => {
+                        const hay = `${al.album.title_en || ''} ${al.album.title_he || ''} ${al.album.author || ''} ${al.album.publisher || ''} ${al.album.year || ''} ${al.album.place || ''}`.toLowerCase();
+                        return hay.includes(q);
+                    });
+                }
+                list.sort((a, b) => {
+                    let va, vb;
+                    if (sortBy === 'year') { va = parseInt(a.al.album.year) || 0; vb = parseInt(b.al.album.year) || 0; }
+                    else if (sortBy === 'images') { va = a.al.images.length; vb = b.al.images.length; }
+                    else { va = (a.al.album.title_en || a.al.album.title_he || '').toLowerCase(); vb = (b.al.album.title_en || b.al.album.title_he || '').toLowerCase(); }
+                    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+                    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+                return list;
+            }, [albums, search, sortBy, sortDir]);
+
+            const toggleSort = (key) => {
+                if (sortBy === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                else { setSortBy(key); setSortDir('asc'); }
+            };
+            const sortIcon = (key) => sortBy === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+
+            return (
+                <div className="h-full flex flex-col bg-slate-50 fade-in">
+                    {/* Controls bar */}
+                    <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap items-center gap-4 shrink-0 shadow-sm">
+                        <div className="relative flex-1 min-w-[240px] max-w-md">
+                            <i className="ph-bold ph-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
+                            <input
+                                type="text"
+                                placeholder={lang === 'he' ? 'חיפוש לפי שם, כותב, שנה, מוציא...' : 'Search by title, author, year, publisher...'}
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                className="w-full border border-slate-300 rounded-xl pr-10 pl-4 py-2.5 text-sm focus:outline-none focus:border-blue-400"
+                                dir="auto"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                            <span>{lang === 'he' ? 'מיון:' : 'Sort:'}</span>
+                            {[['year', lang === 'he' ? 'שנה' : 'Year'], ['title', lang === 'he' ? 'שם' : 'Title'], ['images', lang === 'he' ? 'תמונות' : 'Images']].map(([key, label]) => (
+                                <button key={key} onClick={() => toggleSort(key)}
+                                    className={`px-3 py-1.5 rounded-lg border transition-all ${sortBy === key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-300 text-slate-600 hover:border-blue-400'}`}>
+                                    {label}{sortIcon(key)}
+                                </button>
+                            ))}
+                        </div>
+                        <span className="text-xs text-slate-400 font-bold">{filtered.length} {lang === 'he' ? 'אלבומים' : 'albums'}</span>
+                    </div>
+
+                    {/* Cards grid */}
+                    <div className="flex-1 overflow-y-auto p-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 max-w-screen-2xl mx-auto pb-20">
+                            {filtered.map(({ al, idx }) => {
+                                const cover = al.images.find(img => img.image_num === 1) || al.images[0];
+                                const coverSrc = cover ? getImgSrc(cover) : null;
+                                const title = lang === 'he' ? (al.album.title_he || al.album.title_en || '?') : (al.album.title_en || al.album.title_he || '?');
+                                const subtitle = lang === 'he' ? (al.album.title_en || '') : (al.album.title_he || '');
+                                return (
+                                    <div key={al.album.id || idx} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-blue-300 transition-all">
+                                        {/* Cover */}
+                                        <div className="h-52 bg-slate-200 overflow-hidden relative">
+                                            {coverSrc ? (
+                                                <OptimizedImage src={coverSrc} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                                    <i className="ph ph-book-open text-5xl"></i>
+                                                </div>
+                                            )}
+                                            <div className="absolute top-2 left-2 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded-lg">
+                                                {al.images.length} {lang === 'he' ? 'עמ׳' : 'pp'}
+                                            </div>
+                                            {al.album.year && (
+                                                <div className="absolute top-2 right-2 bg-blue-600/90 text-white text-xs font-bold px-2 py-1 rounded-lg">
+                                                    {al.album.year}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Info */}
+                                        <div className="p-4 flex-1 flex flex-col gap-2">
+                                            <h3 className="font-black text-slate-900 text-base leading-snug" dir="auto">{title}</h3>
+                                            {subtitle && <p className="text-xs text-slate-400 italic" dir="auto">{subtitle}</p>}
+                                            <div className="mt-1 space-y-1 text-xs text-slate-500">
+                                                {al.album.author && <div className="flex gap-1.5 items-center"><i className="ph-fill ph-user text-slate-400"></i><span dir="auto">{al.album.author}</span></div>}
+                                                {al.album.publisher && <div className="flex gap-1.5 items-center"><i className="ph-fill ph-buildings text-slate-400"></i><span dir="auto">{al.album.publisher}</span></div>}
+                                                {al.album.place && <div className="flex gap-1.5 items-center"><i className="ph-fill ph-map-pin text-slate-400"></i><span dir="auto">{al.album.place}</span></div>}
+                                            </div>
+                                        </div>
+                                        {/* Action buttons */}
+                                        <div className="px-4 pb-4 flex gap-2">
+                                            <button onClick={() => onGallery(idx)}
+                                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-bold text-xs transition-all border border-slate-200 hover:border-blue-600">
+                                                <i className="ph-bold ph-images text-base"></i>
+                                                {lang === 'he' ? 'גלריה' : 'Gallery'}
+                                            </button>
+                                            <button onClick={() => onAnalyze(idx)}
+                                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 hover:bg-purple-600 hover:text-white text-slate-700 font-bold text-xs transition-all border border-slate-200 hover:border-purple-600">
+                                                <i className="ph-bold ph-presentation-chart text-base"></i>
+                                                {lang === 'he' ? 'ניתוח' : 'Analyze'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {filtered.length === 0 && (
+                                <div className="col-span-full flex flex-col items-center justify-center py-24 text-slate-400">
+                                    <i className="ph ph-magnifying-glass text-5xl mb-4"></i>
+                                    <p className="text-lg font-bold">{lang === 'he' ? 'לא נמצאו אלבומים' : 'No albums found'}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // TAB 1: דפדוף וגלריה (Flipping Gallery)
+        // ==========================================
+        const GalleryTab = ({ albums, activeAlbumIndex, onAlbumChange, filter, setFilter, lang='he' }) => {
+            const [focusedImage, setFocusedImage] = useState(null);
+            const activeAlbum = albums[activeAlbumIndex];
+
+            if (!activeAlbum) return null;
+
+            const displayedImages = useMemo(() => {
+                return activeAlbum.images.filter(img => {
+                    if(!filter.tag) return true;
+                    if(filter.category) {
+                        const val = img.parsedMetadata[filter.category];
+                        return val && val.toLowerCase().includes(filter.tag.toLowerCase());
+                    }
+                    const searchStr = `${img.parsedMetadata.Scene||''} ${img.parsedMetadata.Vibe||''} ${img.parsedMetadata.Objects||''}`.toLowerCase();
+                    return searchStr.includes(filter.tag.toLowerCase());
+                });
+            }, [activeAlbum.images, filter]);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (focusedImage === null) return;
+                    if (e.key === 'ArrowRight') setFocusedImage(prev => prev < displayedImages.length - 1 ? prev + 1 : prev);
+                    else if (e.key === 'ArrowLeft') setFocusedImage(prev => prev > 0 ? prev - 1 : prev);
+                    else if (e.key === 'Escape') setFocusedImage(null);
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [focusedImage, displayedImages.length]);
+
+            useEffect(() => {
+                if (focusedImage === null) return;
+                [focusedImage - 1, focusedImage + 1].forEach(index => {
+                    const img = displayedImages[index];
+                    if (!img) return;
+                    const preload = new Image();
+                    preload.decoding = 'async';
+                    preload.src = getImgSrc(img);
+                });
+            }, [focusedImage, displayedImages]);
+
+            return (
+                <div className="h-full flex flex-col bg-slate-100 fade-in">
+                    <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3 shrink-0">
+                        <i className="ph-fill ph-book-open text-blue-600 text-xl shrink-0"></i>
+                        <select
+                            value={activeAlbumIndex}
+                            onChange={e => { onAlbumChange(Number(e.target.value)); setFocusedImage(null); }}
+                            className="flex-1 max-w-lg border border-slate-300 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-400 cursor-pointer"
+                            dir="auto"
+                        >
+                            {albums.map((al, idx) => (
+                                <option key={idx} value={idx}>
+                                    {lang === 'he' ? (al.album.title_he || al.album.title_en || `אלבום ${idx+1}`) : (al.album.title_en || al.album.title_he || `Album ${idx+1}`)}
+                                    {al.album.year ? ` (שנת ${al.album.year})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <span className="text-xs text-slate-400 font-bold shrink-0">{activeAlbumIndex + 1} / {albums.length}</span>
+                    </div>
+
+                    <div className="bg-slate-100 px-6 py-3 flex justify-between items-center shrink-0 border-b border-slate-200">
+                        <span className="text-slate-500 text-sm font-bold bg-white px-3 py-1 rounded-full shadow-sm">{lang === 'he' ? `מציג ${displayedImages.length} עמודים` : `Showing ${displayedImages.length} pages`}</span>
+                        {filter.tag && (
+                            <div className="bg-blue-600 text-white px-4 py-1.5 rounded-full flex items-center gap-3 shadow-md">
+                                <i className="ph-bold ph-funnel"></i>
+                                <span className="text-sm">מסנן פעיל: <strong className="bg-white/20 px-2 py-0.5 rounded">{filter.tag}</strong></span>
+                                <button onClick={() => setFilter({tag:null, category:null})} className="hover:bg-white/20 rounded-full p-1"><i className="ph-bold ph-x"></i></button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 max-w-screen-2xl mx-auto pb-20">
+                            {displayedImages.map((img, idx) => (
+                                <div key={img.image_id} onClick={() => setFocusedImage(idx)} className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden cursor-pointer img-card group flex flex-col aspect-[3/4] relative">
+                                    <div className="flex-1 bg-slate-200 relative overflow-hidden">
+                                        <OptimizedImage src={getImgSrc(img)} alt={`Album page ${img.image_num}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 img-overlay transition-opacity flex flex-col justify-end p-4 text-white">
+                                            {img.parsedMetadata.Scene && <span className="text-xs font-bold truncate">{img.parsedMetadata.Scene.split(',')[0]}</span>}
+                                        </div>
+                                    </div>
+                                    <div className="p-3 flex justify-between items-center bg-white z-10">
+                                        <span className="font-black text-slate-800">{lang === 'he' ? `עמ' ${img.image_num}` : `p.${img.image_num}`}</span>
+                                        {img.parsedMetadata.People && <span className="text-xs text-slate-500 flex items-center gap-1"><i className="ph-fill ph-users"></i> {img.parsedMetadata.People}</span>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {focusedImage !== null && (() => {
+                        const img = displayedImages[focusedImage];
+                        return (
+                            <div className="absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-sm flex flex-col md:flex-row fade-in">
+                                <button onClick={() => setFocusedImage(null)} className="absolute top-4 left-4 z-50 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full"><i className="ph-bold ph-x text-xl"></i></button>
+                                <div className="flex-1 relative flex items-center justify-center p-4 lg:p-12 group">
+                                    <button onClick={(e) => { e.stopPropagation(); setFocusedImage(prev => prev < displayedImages.length - 1 ? prev + 1 : prev); }} disabled={focusedImage === displayedImages.length - 1} className="absolute right-4 z-40 bg-black/50 hover:bg-black text-white p-4 rounded-full disabled:opacity-0"><i className="ph-bold ph-caret-right text-2xl"></i></button>
+                                    <button onClick={(e) => { e.stopPropagation(); setFocusedImage(prev => prev > 0 ? prev - 1 : prev); }} disabled={focusedImage === 0} className="absolute left-4 z-40 bg-black/50 hover:bg-black text-white p-4 rounded-full disabled:opacity-0"><i className="ph-bold ph-caret-left text-2xl"></i></button>
+                                    <OptimizedImage src={getImgSrc(img)} alt={`Album page ${img.image_num}`} eager={true} className="max-w-full max-h-full object-contain drop-shadow-2xl mx-auto" />
+                                </div>
+                                <div className="w-full md:w-[450px] bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto shadow-2xl">
+                                    <div className="p-6 border-b border-slate-100 bg-slate-50 sticky top-0 z-10 flex items-center gap-4">
+                                        <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-black text-2xl shadow-lg transform -rotate-3">{img.image_num}</div>
+                                        <div><h2 className="text-2xl font-black text-slate-900">{lang === 'he' ? `עמוד ${img.image_num}` : `Page ${img.image_num}`}</h2><p className="text-sm text-slate-500 font-bold">{lang === 'he' ? (activeAlbum.album.title_he || activeAlbum.album.title_en) : activeAlbum.album.title_en}</p></div>
+                                    </div>
+                                    <div className="p-6 space-y-8 bg-white flex-1">
+                                        {/* Short caption as subtitle */}
+                                        {img.short_caption && (
+                                            <p className="text-sm text-slate-500 italic leading-relaxed border-b border-slate-100 pb-4">{img.short_caption}</p>
+                                        )}
+                                        <div className="space-y-6">
+                                            {['Scene', 'Objects', 'Vibe', 'People'].map(cat => img.parsedMetadata[cat] && (
+                                                <div key={cat}>
+                                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-100 pb-1">{cat}</h3>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {img.parsedMetadata[cat].split(',').map((item, i) => (
+                                                            <button key={i} onClick={() => { setFilter({tag: item.trim(), category: cat}); setFocusedImage(null); }} className={`text-sm px-3 py-1.5 rounded-lg border font-bold cursor-pointer transition-transform hover:-translate-y-0.5 shadow-sm ${getTagColor(cat)}`}>{item.trim()}</button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {/* Actions field */}
+                                            {img.parsedMetadata.Actions && (
+                                                <div>
+                                                    <h3 className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-3 border-b border-slate-100 pb-1"><i className="ph-fill ph-person-simple-run"></i> Actions</h3>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {img.parsedMetadata.Actions.split(',').map((a, i) => (
+                                                            <span key={i} className="text-xs px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 font-medium">{a.trim()}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="pt-6 border-t border-slate-200 space-y-6">
+                                            {img.parsedMetadata.Caption && (<div><h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-2"><i className="ph-fill ph-quotes"></i> Caption</h3><p className="text-sm p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-medium">{img.parsedMetadata.Caption}</p></div>)}
+                                            {img.parsedMetadata.Description && (<div><h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2"><i className="ph-fill ph-eye"></i> CV Description</h3><p className="text-sm p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900">{img.parsedMetadata.Description}</p></div>)}
+                                            {img.parsedMetadata.Text && (<div><h3 className="text-[10px] font-black text-purple-600 uppercase tracking-widest mb-2"><i className="ph-fill ph-text-t"></i> OCR Text</h3><p className="text-sm p-4 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 font-mono" dir="ltr">{img.parsedMetadata.Text}</p></div>)}
+                                            {/* OCR translation (when different from ocr_text) */}
+                                            {img.ocr_translation && img.ocr_translation !== img.ocr_text && (
+                                                <div><h3 className="text-[10px] font-black text-teal-600 uppercase tracking-widest mb-2"><i className="ph-fill ph-translate"></i> OCR Translation</h3><p className="text-sm p-4 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 font-mono" dir="ltr">{img.ocr_translation}</p></div>
+                                            )}
+                                            {/* Raw OCR (from ocr_text field, if different from parsed Text) */}
+                                            {img.ocr_text && img.ocr_text !== img.parsedMetadata.Text && (
+                                                <div><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2"><i className="ph-fill ph-scan"></i> Raw OCR</h3><p className="text-sm p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono" dir="ltr">{img.ocr_text}</p></div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 15: פעולות – Actions Frequency Chart
+        // ==========================================
+        const ActionsFrequency = ({ images }) => {
+            const [ttipA, setTtipA] = useState(null);
+            const freq = useMemo(() => {
+                const counts = {};
+                images.forEach(img => {
+                    const raw = img.parsedMetadata.Actions || '';
+                    if (!raw) return;
+                    raw.split(',').forEach(a => {
+                        const t = a.trim().toLowerCase();
+                        if (t.length > 2) counts[t] = (counts[t] || 0) + 1;
+                    });
+                });
+                return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 25);
+            }, [images]);
+
+            if (freq.length === 0) return null;
+            const max = freq[0][1];
+
+            return (
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                    <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3 mb-2">
+                        <i className="ph-fill ph-person-simple-run text-orange-500"></i> {useLang() === 'he' ? 'תדירות פעולות (Actions)' : 'Actions Frequency'}
+                    </h3>
+                    <BilingualTheoryBox
+                        titleHe="כוריאוגרפיה חוזרת של גורמי האלבום"
+                        titleEn="Recurring Choreography of Album Agents"
+                        fields="Actions"
+                        fieldMapHe={[{field:'Actions', action:'רשימה מופרדת בפסיקים של פעולות ספציפיות שזוהו ע"י מודל ראייה ממוחשבת לכל תמונה.'}]}
+                        fieldMapEn={[{field:'Actions', action:'Comma-separated list of specific agent behaviors detected by CV model per image.'}]}
+                        stepsHe={['חלוקה לפריטים בפסיק','נרמול (lowercase + trim)','ספירת תדירות','סינון <3 אותיות','מיון יורד','25 ראשונות']}
+                        stepsEn={['Split on comma','Normalize (lowercase + trim)','Count frequency','Filter short tokens','Sort descending','Top 25 shown']}
+                        algoHe="היסטוגרמה של מחרוזות פעולה מהשדה Actions, משוקללת לפי מספר הופעות."
+                        algoEn="Histogram of action strings from the Actions field, weighted by occurrence count."
+                        claimHe="חושף את פרופיל הפעילות של הגורמים: פסיביות (יושב, עומד) לעומת אקטיביות (הולך, אוחז)? צבאי לעומת אזרחי?"
+                        claimEn="Reveals actor activity profiles: passive (sitting, standing) vs. active (walking, holding)? Military vs. civilian?"
+                    />
+                    <div className="mt-6 space-y-1.5" dir="ltr">
+                        {freq.map(([action, count], i) => {
+                            const pct = (count / max) * 100;
+                            const hue = [...action.slice(0, 6)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffff, 0) % 360;
+                            const color = `hsl(${hue},58%,50%)`;
+                            return (
+                                <div key={action} className="flex items-center gap-3 group cursor-default"
+                                    onMouseEnter={(e) => setTtipA({ x: e.clientX, y: e.clientY, content: `${action}\n${count} הופעות\n${((count/images.length)*100).toFixed(1)}% מהעמודים` })}
+                                    onMouseMove={(e) => setTtipA(p => p ? {...p, x: e.clientX, y: e.clientY} : null)}
+                                    onMouseLeave={() => setTtipA(null)}>
+                                    <span className="text-xs text-slate-600 font-mono w-48 text-left truncate shrink-0" title={action}>{action}</span>
+                                    <div className="flex-1 h-4 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className="h-full rounded-full transition-all duration-200 opacity-80 group-hover:opacity-100"
+                                             style={{ width: `${pct}%`, backgroundColor: color }}></div>
+                                    </div>
+                                    <span className="text-xs text-slate-400 font-mono w-7 text-right shrink-0">{count}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <ChartTooltip tooltip={ttipA} />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // TAB 3: השוואת קורפוס (Comparison)
+        // ==========================================
+        const ComparisonTab = ({ albums }) => {
+            const [compareMode, setCompareMode] = useState('modalities');
+            // Default: no albums selected
+            const [selectedIdxs, setSelectedIdxs] = useState([]);
+            const [dropOpen, setDropOpen] = useState(false);
+            const dropRef = useRef(null);
+
+            React.useEffect(() => {
+                if (!dropOpen) return;
+                const handler = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false); };
+                document.addEventListener('mousedown', handler);
+                return () => document.removeEventListener('mousedown', handler);
+            }, [dropOpen]);
+
+            // Keep selectedIdxs valid when albums array shrinks (remove stale indices)
+            React.useEffect(() => {
+                setSelectedIdxs(prev => prev.filter(i => i < albums.length));
+            }, [albums.length]);
+
+            if (albums.length < 2) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 p-12 text-center bg-slate-50">
+                        <i className="ph-fill ph-scales text-6xl mb-6 opacity-30"></i>
+                        <h2 className="text-3xl font-bold text-slate-600 mb-4">נדרש קורפוס להשוואה</h2>
+                        <p className="max-w-md text-lg">בכדי להפעיל השוואה רוחבית, יש לטעון לפחות שני אלבומים (הם נטענים אוטומטית מהשרת).</p>
+                    </div>
+                );
+            }
+
+            const options = [
+                { id: 'modalities', label: 'מולטי-מודאליות (תמונה/טקסט)', icon: 'ph-arrows-split' },
+                { id: 'syntax', label: 'תחביר מרחבי (Scenes)', icon: 'ph-graph' },
+                { id: 'stream', label: 'זרמי סצנות (Streamgraph)', icon: 'ph-wave-sawtooth' },
+                { id: 'vibe', label: 'הברקוד הרגשי', icon: 'ph-barcode' },
+                { id: 'demography', label: 'זרימה דמוגרפית', icon: 'ph-users' },
+                { id: 'spatial', label: 'מקצב מרחבי (פנים/חוץ)', icon: 'ph-house-line' },
+                { id: 'complexity', label: 'מורכבות חזותית', icon: 'ph-chart-scatter' },
+                { id: 'segmentation', label: 'פילוח נרטיבי אוטומטי', icon: 'ph-split-horizontal' },
+                { id: 'uncertainty', label: 'מדד אי-ודאות', icon: 'ph-warning-circle' },
+                { id: 'fingerprint', label: 'טביעת אצבע', icon: 'ph-fingerprint' },
+                { id: 'ridgeline', label: 'קווי רכס לקסיקליים', icon: 'ph-chart-line-up' },
+                { id: 'matrix', label: 'מטריצת בימוי', icon: 'ph-intersect' },
+                { id: 'treemap', label: 'מפת עץ היררכית', icon: 'ph-squares-four' },
+                { id: 'network', label: 'רשת סצנה-אובייקטים', icon: 'ph-share-network' },
+                { id: 'actions', label: 'פעולות – Actions', icon: 'ph-person-simple-run' },
+                { id: 'smallmultiples', label: 'Small Multiples קורפוס', icon: 'ph-sparkle' }
+            ];
+
+            // These modes look best side-by-side in a 2-col grid
+            const SIDE_BY_SIDE = new Set(['fingerprint', 'modalities', 'treemap', 'matrix', 'actions', 'uncertainty']);
+
+            const toggleAlbum = (i) => {
+                setSelectedIdxs(prev =>
+                    prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort((a, b) => a - b)
+                );
+            };
+
+            const displayedAlbums = albums.filter((_, i) => selectedIdxs.includes(i));
+            const tooFew = displayedAlbums.length < 2;
+
+            // Soft palette for album tags
+            const TAG_COLORS = ['bg-blue-600', 'bg-purple-600', 'bg-emerald-600', 'bg-rose-600', 'bg-amber-500', 'bg-teal-600'];
+
+            return (
+                <div className="h-full flex flex-col bg-slate-50 fade-in">
+                    {/* ── Control bar ── */}
+                    <div className="bg-white border-b border-slate-200 p-4 shrink-0 shadow-sm z-10">
+                        {/* Row 1: mode selector */}
+                        <div className="flex flex-wrap gap-2 items-center justify-center mb-3">
+                            <span className="font-bold text-slate-500 ml-3 text-sm">מדד להשוואה:</span>
+                            <select
+                                value={compareMode}
+                                onChange={(e) => setCompareMode(e.target.value)}
+                                className="bg-slate-100 border border-slate-300 text-slate-800 font-bold py-1.5 px-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-sm"
+                            >
+                                {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                            </select>
+                        </div>
+                        {/* Row 2: album multi-select dropdown */}
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                            <span className="text-xs font-semibold text-slate-400">אלבומים להשוואה:</span>
+                            <div className="relative" ref={dropRef}>
+                                <button
+                                    onClick={() => setDropOpen(o => !o)}
+                                    className="flex items-center gap-2 bg-white border border-slate-300 hover:border-blue-400 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 cursor-pointer min-w-[210px] shadow-sm"
+                                >
+                                    <i className="ph-bold ph-list-checks text-blue-500"></i>
+                                    <span className="flex-1 text-right">{selectedIdxs.length} / {albums.length} נבחרו</span>
+                                    <i className={`ph-bold ${dropOpen ? 'ph-caret-up' : 'ph-caret-down'} text-slate-400`}></i>
+                                </button>
+                                {dropOpen && (
+                                    <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl w-80 max-h-72 overflow-y-auto p-2">
+                                        <div className="flex gap-2 px-2 pb-2 border-b border-slate-100 mb-1">
+                                            <button onClick={() => setSelectedIdxs(albums.map((_, i) => i))} className="text-xs text-blue-600 font-bold hover:underline">בחר הכל</button>
+                                            <span className="text-slate-300">|</span>
+                                            <button onClick={() => setSelectedIdxs([])} className="text-xs text-slate-500 font-bold hover:underline">נקה הכל</button>
+                                        </div>
+                                        {albums.map((album, i) => {
+                                            const checked = selectedIdxs.includes(i);
+                                            const colorClass = TAG_COLORS[i % TAG_COLORS.length];
+                                            return (
+                                                <label key={i} className="flex items-center gap-3 px-2 py-2 hover:bg-slate-50 rounded-lg cursor-pointer">
+                                                    <input type="checkbox" checked={checked} onChange={() => toggleAlbum(i)} className="w-4 h-4 rounded cursor-pointer accent-blue-600" />
+                                                    <span className={`shrink-0 w-3 h-3 rounded-full ${colorClass}`}></span>
+                                                    <span dir="auto" className="text-sm font-bold text-slate-700 truncate flex-1">
+                                                        {album.album?.title_he || album.album?.title_en || `אלבום ${i + 1}`}
+                                                        {album.album?.year ? ` (${album.album.year})` : ''}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                            {/* selected tags */}
+                            <div className="flex flex-wrap gap-1.5">
+                                {selectedIdxs.map(i => (
+                                    <span key={i} className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold text-white ${TAG_COLORS[i % TAG_COLORS.length]}`}>
+                                        {(albums[i]?.album?.title_he || albums[i]?.album?.title_en || `#${i+1}`).slice(0, 22)}
+                                        <button onClick={() => toggleAlbum(i)} className="hover:opacity-75 leading-none font-black">×</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Content area ── */}
+                    <div className="flex-1 overflow-y-auto p-6">
+                        {tooFew ? (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center">
+                                <i className="ph-fill ph-warning text-5xl mb-4 opacity-30"></i>
+                                <p className="text-lg font-semibold text-slate-500">יש לבחור לפחות שני אלבומים להשוואה</p>
+                            </div>
+                        ) : compareMode === 'smallmultiples' ? (
+                            <SmallMultiplesComparison albums={displayedAlbums} />
+                        ) : (
+                            <div className={`max-w-7xl mx-auto pb-20 ${SIDE_BY_SIDE.has(compareMode) ? 'grid grid-cols-1 lg:grid-cols-2 gap-6' : 'space-y-10'}`}>
+                                {displayedAlbums.map((album, pos) => {
+                                    const origIdx = albums.indexOf(album);
+                                    const color = TAG_COLORS[origIdx % TAG_COLORS.length];
+                                    return (
+                                        <div key={origIdx} className="bg-white rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
+                                            <div className={`${color} text-white px-5 py-1.5 text-sm font-bold`}>
+                                                {album.album?.title_he || album.album?.title_en || `אלבום ${origIdx + 1}`}
+                                                <span className="opacity-70 font-normal mr-2 text-xs">{album.album?.year || ''}</span>
+                                            </div>
+                                            <div className="p-6">
+                                                {compareMode === 'modalities' && <ModalitiesDialectic images={album.images} />}
+                                                {compareMode === 'syntax' && <SpatialSyntax images={album.images} />}
+                                                {compareMode === 'stream' && <SceneStreamgraph images={album.images} />}
+                                                {compareMode === 'vibe' && <VibeBarcode images={album.images} />}
+                                                {compareMode === 'demography' && <DemographicStream images={album.images} />}
+                                                {compareMode === 'spatial' && <SpatialRhythm images={album.images} />}
+                                                {compareMode === 'complexity' && <VisualComplexity images={album.images} />}
+                                                {compareMode === 'segmentation' && <NarrativeSegmentation images={album.images} />}
+                                                {compareMode === 'uncertainty' && <AnnotationUncertainty images={album.images} />}
+                                                {compareMode === 'fingerprint' && <AlbumFingerprint images={album.images} />}
+                                                {compareMode === 'ridgeline' && <LexicalRidgeline images={album.images} />}
+                                                {compareMode === 'matrix' && <CoOccurrenceMatrix images={album.images} />}
+                                                {compareMode === 'treemap' && <HierarchicalTreemap images={album.images} />}
+                                                {compareMode === 'network' && <SceneObjectNetwork images={album.images} />}
+                                                {compareMode === 'actions' && <ActionsFrequency images={album.images} />}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+
+        // --- App Component ---
+        function App() {
+            const [albums, setAlbums] = useState([]);
+            const [activeAlbumIndex, setActiveAlbumIndex] = useState(0);
+            const [activeTab, setActiveTab] = useState('library'); // library, gallery, dv, compare
+            const [globalFilter, setGlobalFilter] = useState({tag: null, category: null});
+            const [autoLoading, setAutoLoading] = useState(true);
+            const [lang, setLang] = useState('he'); // 'he' | 'en'
+
+            // Auto-load albums — server mode (localhost) or static mode (GitHub Pages)
+            React.useEffect(() => {
+                if (window.location.protocol === 'file:') {
+                    setAutoLoading(false);
+                    return;
+                }
+                const processAlbums = (data) => {
+                    if (!Array.isArray(data) || data.length === 0) { setAutoLoading(false); return; }
+                    const enhanced = data.map(json => ({
+                        ...json,
+                        images: (json.images || [])
+                            .map(img => ({ ...img, parsedMetadata: parseCaptionString(img.caption) }))
+                            .sort((a, b) => a.image_num - b.image_num)
+                    }));
+                    setAlbums(enhanced);
+                    setAutoLoading(false);
+                };
+                // Try server API first (node server.js)
+                fetch('/api/albums')
+                    .then(r => { if (!r.ok) throw new Error('no-server'); return r.json(); })
+                    .then(processAlbums)
+                    .catch(() => {
+                        // Static fallback (GitHub Pages): load albums_list.json then each album JSON
+                        fetch('albums_list.json')
+                            .then(r => r.json())
+                            .then(names => Promise.all(
+                                names.map(n => fetch(encodeURIComponent(n))
+                                    .then(r => r.ok ? r.json() : null)
+                                    .catch(() => null))
+                            ))
+                            .then(results => processAlbums(results.filter(Boolean)))
+                            .catch(() => setAutoLoading(false));
+                    });
+            }, []);
+
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const json = JSON.parse(e.target.result);
+                        const enhancedImages = (json.images || []).map(img => ({ ...img, parsedMetadata: parseCaptionString(img.caption) })).sort((a, b) => a.image_num - b.image_num);
+                        setAlbums(prev => [...prev, { ...json, images: enhancedImages }]);
+                        setActiveAlbumIndex(albums.length); 
+                    } catch (error) { alert('שגיאה בקריאת הקובץ.'); }
+                };
+                reader.readAsText(file);
+                event.target.value = null;
+            };
+
+            const jumpToGalleryWithTag = (tag, category) => {
+                setGlobalFilter({ tag, category });
+                setActiveTab('gallery');
+            };
+
+            if (albums.length === 0) {
+                return (
+                    <div className="h-full bg-slate-900 flex flex-col items-center justify-center p-6">
+                        <div className="bg-slate-800 p-16 rounded-[3rem] shadow-2xl max-w-4xl w-full text-center border border-slate-700">
+                            <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg transform rotate-3">
+                                <i className="ph-bold ph-books text-5xl text-white"></i>
+                            </div>
+                            <h1 className="text-4xl md:text-5xl font-black text-white mb-6 tracking-tight">אלבומי תמונות לאומיים של מדינת ישראל</h1>
+                            <p className="text-slate-400 mb-10 text-lg leading-relaxed max-w-2xl mx-auto">
+                                אוניברסיטת בר-אילן · אוניברסיטת חיפה<br/>
+                                מערכת מחקר שלמה המשלבת 14 ויזואליזציות לקריאה מרחוק, עם חלון מתודולוגי מפורט לכל מדד.
+                            </p>
+                            {autoLoading ? (
+                                <div className="flex flex-col items-center gap-4 text-slate-300">
+                                    <svg className="animate-spin w-10 h-10 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                                    </svg>
+                                    <span className="text-lg font-bold">טוען אלבומים אוטומטית...</span>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center gap-4">
+                                    {window.location.protocol === 'file:' && (
+                                        <p className="text-amber-400 text-sm mb-2 max-w-lg">
+                                            הקובץ נפתח ישירות מהדיסק. להפעלה אוטומטית עם טעינת תמונות מהירה: פתח Terminal בתיקייה <strong>Israel_Album</strong> והרץ <code>node server.js</code>, ואז פתח <a href="http://localhost:7070" className="underline text-blue-400">http://localhost:7070</a>
+                                        </p>
+                                    )}
+                                    <label className="cursor-pointer bg-white hover:bg-slate-100 text-slate-900 py-4 px-10 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-4 text-xl font-bold inline-flex">
+                                        <i className="ph-bold ph-upload-simple text-3xl text-blue-600"></i>
+                                        <span>העלאת קובץ אלבום (JSON) ידנית</span>
+                                        <input type="file" accept=".json" className="hidden" onChange={handleFileUpload} />
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            const activeAlbum = albums[activeAlbumIndex];
+
+            return (
+                <LangContext.Provider value={lang}>
+                <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+                    <header className="bg-slate-900 text-white px-8 py-4 flex flex-wrap gap-4 justify-between items-center z-20 shrink-0 shadow-lg">
+                        <div className="flex items-center gap-8">
+                            <h1 className="text-xl font-black tracking-tight flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center"><i className="ph-bold ph-books text-white text-xl"></i></div>
+                                {lang === 'he' ? 'אלבומי תמונות לאומיים' : 'National Photo Albums of Israel'}
+                            </h1>
+
+                            <div className="bg-slate-800 p-1.5 rounded-2xl flex flex-wrap gap-0.5">
+                                <button onClick={() => setActiveTab('library')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold transition-all text-sm ${activeTab === 'library' ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}>
+                                    <i className="ph-bold ph-books text-lg"></i> {lang === 'he' ? '0. ספרייה' : '0. Library'}
+                                </button>
+                                <button onClick={() => setActiveTab('gallery')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold transition-all text-sm ${activeTab === 'gallery' ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}>
+                                    <i className="ph-bold ph-images text-lg"></i> {lang === 'he' ? '1. גלריה' : '1. Gallery'}
+                                </button>
+                                <button onClick={() => setActiveTab('dv')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold transition-all text-sm ${activeTab === 'dv' ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}>
+                                    <i className="ph-bold ph-presentation-chart text-lg"></i> {lang === 'he' ? '2. קריאה מרחוק' : '2. Distant Reading'}
+                                </button>
+                                <button onClick={() => setActiveTab('compare')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-bold transition-all text-sm ${activeTab === 'compare' ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}>
+                                    <i className="ph-bold ph-scales text-lg"></i> {lang === 'he' ? '3. השוואה' : '3. Compare'}
+                                    {albums.length > 1 && <span className="bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full ml-1">{albums.length}</span>}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setLang(l => l === 'he' ? 'en' : 'he')}
+                                className="bg-slate-700 hover:bg-slate-600 text-white py-2 px-4 rounded-xl transition-all flex items-center gap-2 text-sm font-bold border border-slate-600 hover:border-slate-500"
+                                title={lang === 'he' ? 'Switch to English' : 'עבור לעברית'}
+                            >
+                                <i className="ph-bold ph-translate"></i>
+                                {lang === 'he' ? 'EN' : 'עב'}
+                            </button>
+                            <label className="cursor-pointer bg-slate-700 hover:bg-slate-600 text-white py-2 px-5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm font-bold border border-slate-600 hover:border-slate-500">
+                                <i className="ph-bold ph-plus"></i> {lang === 'he' ? 'הוספת אלבום למעבדה' : 'Add Album'}
+                                <input type="file" accept=".json" className="hidden" onChange={handleFileUpload} />
+                            </label>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 overflow-hidden relative">
+                        {activeTab === 'library' && (
+                            <LibraryTab
+                                albums={albums}
+                                lang={lang}
+                                onGallery={idx => { setActiveAlbumIndex(idx); setActiveTab('gallery'); }}
+                                onAnalyze={idx => { setActiveAlbumIndex(idx); setActiveTab('dv'); }}
+                            />
+                        )}
+                        {activeTab === 'gallery' && (
+                            <GalleryTab albums={albums} activeAlbumIndex={activeAlbumIndex} onAlbumChange={setActiveAlbumIndex} filter={globalFilter} setFilter={setGlobalFilter} lang={lang} />
+                        )}
+                        
+                        {activeTab === 'dv' && activeAlbum && (
+                            <div className="h-full flex flex-col bg-slate-50 fade-in">
+                                {/* Album selector dropdown */}
+                                <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3 shrink-0 shadow-sm">
+                                    <i className="ph-fill ph-book-open text-blue-600 text-xl shrink-0"></i>
+                                    <select
+                                        value={activeAlbumIndex}
+                                        onChange={e => setActiveAlbumIndex(Number(e.target.value))}
+                                        className="flex-1 max-w-lg border border-slate-300 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-400 cursor-pointer"
+                                        dir="auto"
+                                    >
+                                        {albums.map((al, idx) => (
+                                            <option key={idx} value={idx}>
+                                                {lang === 'he' ? (al.album.title_he || al.album.title_en || `אלבום ${idx+1}`) : (al.album.title_en || al.album.title_he || `Album ${idx+1}`)}
+                                                {al.album.year ? ` (שנת ${al.album.year})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span className="text-xs text-slate-400 font-bold shrink-0">{activeAlbumIndex + 1} / {albums.length}</span>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
+                                <div className="max-w-7xl mx-auto space-y-12 pb-20">
+                                    <div className="text-center mb-8">
+                                        <div className="inline-block bg-white border border-slate-200 rounded-full px-4 py-1 mb-4 text-sm font-bold text-slate-500 shadow-sm">{lang === 'he' ? 'ניתוח אלבום יחיד' : 'Single Album Analysis'}</div>
+                                        <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">{lang === 'he' ? (activeAlbum.album.title_he || activeAlbum.album.title_en) : activeAlbum.album.title_en}</h2>
+                                        <p className="text-slate-500">{lang === 'he' ? 'מאת' : 'by'}: {activeAlbum.album.author || (lang === 'he' ? 'לא ידוע' : 'Unknown')} | {activeAlbum.album.year} | {activeAlbum.total_images} {lang === 'he' ? 'עמודים' : 'pages'}</p>
+                                    </div>
+
+                                    {/* 1. פרופיל מאקרו */}
+                                    <AlbumFingerprint images={activeAlbum.images} />
+
+                                    {/* 2. מולטימודאליות */}
+                                    <ModalitiesDialectic images={activeAlbum.images} />
+                                    
+                                    {/* 3. תחביר מרחבי */}
+                                    <SpatialSyntax images={activeAlbum.images} onTagClick={jumpToGalleryWithTag} />
+
+                                    {/* 4. זרמי סצנות */}
+                                    <SceneStreamgraph images={activeAlbum.images} onTagClick={jumpToGalleryWithTag} />
+                                    
+                                    {/* 5-8. שכבת רצפים לינאריים */}
+                                    <VibeBarcode images={activeAlbum.images} onTagClick={jumpToGalleryWithTag} />
+                                    <DemographicStream images={activeAlbum.images} />
+                                    <SpatialRhythm images={activeAlbum.images} onTagClick={jumpToGalleryWithTag} />
+                                    <VisualComplexity images={activeAlbum.images} />
+
+                                    {/* 9-10. מודולים מתקדמים */}
+                                    <NarrativeSegmentation images={activeAlbum.images} />
+                                    <AnnotationUncertainty images={activeAlbum.images} />
+
+                                    {/* 11. Ridgelines */}
+                                    <LexicalRidgeline images={activeAlbum.images} onTagClick={jumpToGalleryWithTag} />
+
+                                    {/* 12. Scene-Object Network */}
+                                    <SceneObjectNetwork images={activeAlbum.images} onTagClick={jumpToGalleryWithTag} />
+
+                                    {/* 13-14. מערכי יחסים מרוכזים */}
+                                    <CoOccurrenceMatrix images={activeAlbum.images} />
+                                    <HierarchicalTreemap images={activeAlbum.images} />
+
+                                    {/* 15. פעולות – Actions Frequency */}
+                                    <ActionsFrequency images={activeAlbum.images} />
+                                </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'compare' && (
+                            <ComparisonTab albums={albums} />
+                        )}
+                    </main>
+                </div>
+                </LangContext.Provider>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

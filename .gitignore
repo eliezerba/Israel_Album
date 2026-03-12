@@ -1,0 +1,16 @@
+# Node modules (if ever added)
+node_modules/
+
+# Local image cache – large binary files, not needed in repo
+# Anyone who runs the server will rebuild this automatically
+.image_cache/
+
+# Temp files from cache warm-up
+*.tmp
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+*.swp

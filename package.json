@@ -1,0 +1,15 @@
+{
+  "name": "national-albums-mediation-lab",
+  "version": "1.0.0",
+  "description": "Interactive viewer for Israeli heritage photobooks — 20 albums, 15 visual analyses",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "refresh-albums": "powershell -File download_albums.ps1"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": ["photobooks", "israel", "digital-humanities", "albums"],
+  "license": "MIT"
+}
