@@ -1,0 +1,212 @@
+﻿        const ComparisonTab = ({ albums, lang = 'he' }) => {
+            const [compareMode, setCompareMode] = useState('modalities');
+            const [subsetMode, setSubsetMode] = useState('album');
+            const [selectedAlbumIdx, setSelectedAlbumIdx] = useState(0);
+            const [selectedYear, setSelectedYear] = useState('');
+            const [selectedAuthor, setSelectedAuthor] = useState('');
+            const [selectedPublisher, setSelectedPublisher] = useState('');
+            const [customField, setCustomField] = useState('id');
+            const [customValue, setCustomValue] = useState('');
+
+            const years = useMemo(() => {
+                return [...new Set(albums.map(a => String(a.album?.year || '')).filter(Boolean))].sort();
+            }, [albums]);
+
+            const authors = useMemo(() => {
+                return [...new Set(albums.map(a => (a.album?.author || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            }, [albums]);
+
+            const publishers = useMemo(() => {
+                return [...new Set(albums.map(a => (a.album?.publisher || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            }, [albums]);
+
+            React.useEffect(() => {
+                if (selectedAlbumIdx >= albums.length) setSelectedAlbumIdx(0);
+            }, [selectedAlbumIdx, albums.length]);
+
+            React.useEffect(() => {
+                if (!selectedYear && years.length) setSelectedYear(years[0]);
+            }, [years, selectedYear]);
+
+            React.useEffect(() => {
+                if (!selectedAuthor && authors.length) setSelectedAuthor(authors[0]);
+            }, [authors, selectedAuthor]);
+
+            React.useEffect(() => {
+                if (!selectedPublisher && publishers.length) setSelectedPublisher(publishers[0]);
+            }, [publishers, selectedPublisher]);
+
+            const subsetAlbums = useMemo(() => {
+                if (subsetMode === 'album') {
+                    return albums[selectedAlbumIdx] ? [albums[selectedAlbumIdx]] : [];
+                }
+                if (subsetMode === 'year') {
+                    return albums.filter(a => String(a.album?.year || '') === selectedYear);
+                }
+                if (subsetMode === 'author') {
+                    return albums.filter(a => (a.album?.author || '').trim() === selectedAuthor);
+                }
+                if (subsetMode === 'publisher') {
+                    return albums.filter(a => (a.album?.publisher || '').trim() === selectedPublisher);
+                }
+                if (subsetMode === 'custom') {
+                    const field = customField.trim();
+                    const value = customValue.trim().toLowerCase();
+                    if (!field || !value) return [];
+                    return albums.filter((a) => {
+                        const raw = readAlbumField(a.album || {}, field).toLowerCase();
+                        return raw.includes(value);
+                    });
+                }
+                return [];
+            }, [albums, subsetMode, selectedAlbumIdx, selectedYear, selectedAuthor, selectedPublisher, customField, customValue]);
+
+            const corpusImages = useMemo(() => normalizeAlbumImages(albums), [albums]);
+            const subsetImages = useMemo(() => normalizeAlbumImages(subsetAlbums), [subsetAlbums]);
+
+            const subsetLabel = useMemo(() => {
+                if (subsetMode === 'album') {
+                    const a = albums[selectedAlbumIdx];
+                    return a ? (a.album?.title_he || a.album?.title_en || (lang === 'he' ? '׳׳׳‘׳•׳' : 'Album')) : (lang === 'he' ? '׳׳׳‘׳•׳' : 'Album');
+                }
+                if (subsetMode === 'year') return lang === 'he' ? `׳©׳ ׳”: ${selectedYear || '-'}` : `Year: ${selectedYear || '-'}`;
+                if (subsetMode === 'author') return lang === 'he' ? `׳׳—׳‘׳¨: ${selectedAuthor || '-'}` : `Author: ${selectedAuthor || '-'}`;
+                if (subsetMode === 'publisher') return lang === 'he' ? `׳׳•"׳: ${selectedPublisher || '-'}` : `Publisher: ${selectedPublisher || '-'}`;
+                return lang === 'he' ? `׳׳¡׳ ׳ ׳׳•׳×׳׳: ${customField || '-'} ׳›׳•׳׳ "${customValue || ''}"` : `Custom filter: ${customField || '-'} contains "${customValue || ''}"`;
+            }, [subsetMode, albums, selectedAlbumIdx, selectedYear, selectedAuthor, selectedPublisher, customField, customValue, lang]);
+
+            if (albums.length === 0) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 p-12 text-center bg-slate-50">
+                        <i className="ph-fill ph-warning text-6xl mb-6 opacity-30"></i>
+                        <h2 className="text-3xl font-bold text-slate-600 mb-4">{lang === 'he' ? '׳׳ ׳ ׳˜׳¢׳ ׳• ׳׳׳‘׳•׳׳™׳' : 'No albums loaded'}</h2>
+                    </div>
+                );
+            }
+
+            const subsetPct = corpusImages.length ? ((subsetImages.length / corpusImages.length) * 100) : 0;
+
+            return (
+                <div className="h-full flex flex-col bg-slate-50 fade-in">
+                    <div className="bg-white border-b border-slate-200 p-4 md:p-5 shrink-0 shadow-sm z-10">
+                        <div className="max-w-7xl mx-auto space-y-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold text-slate-500">{lang === 'he' ? '׳₪׳™׳¦׳³׳¨ ׳׳ ׳™׳×׳•׳—:' : 'Feature:'}</span>
+                                <select
+                                    value={compareMode}
+                                    onChange={(e) => setCompareMode(e.target.value)}
+                                    className="border border-slate-300 rounded-xl py-2 px-3 text-sm font-bold bg-white"
+                                >
+                                    {VIZ_OPTIONS.map(o => (
+                                        <option key={o.id} value={o.id}>{lang === 'he' ? o.labelHe : o.labelEn}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold text-slate-500">{lang === 'he' ? '׳×׳×-׳§׳‘׳•׳¦׳”:' : 'Subset:'}</span>
+                                <select
+                                    value={subsetMode}
+                                    onChange={(e) => setSubsetMode(e.target.value)}
+                                    className="border border-slate-300 rounded-xl py-2 px-3 text-sm font-bold bg-white"
+                                >
+                                    <option value="album">{lang === 'he' ? '׳׳׳‘׳•׳ ׳™׳—׳™׳“' : 'Single album'}</option>
+                                    <option value="year">{lang === 'he' ? '׳׳₪׳™ ׳©׳ ׳”' : 'By year'}</option>
+                                    <option value="author">{lang === 'he' ? '׳׳₪׳™ ׳׳—׳‘׳¨' : 'By author'}</option>
+                                    <option value="publisher">{lang === 'he' ? '׳׳₪׳™ ׳׳•"׳' : 'By publisher'}</option>
+                                    <option value="custom">{lang === 'he' ? '׳©׳“׳” ׳׳˜׳-׳“׳׳˜׳” ׳׳•׳×׳׳' : 'Custom metadata field'}</option>
+                                </select>
+
+                                {subsetMode === 'album' && (
+                                    <select value={selectedAlbumIdx} onChange={(e) => setSelectedAlbumIdx(Number(e.target.value))} className="border border-slate-300 rounded-xl py-2 px-3 text-sm bg-white" dir="auto">
+                                        {albums.map((a, idx) => (
+                                            <option key={idx} value={idx}>
+                                                {lang === 'he' ? (a.album?.title_he || a.album?.title_en || `׳׳׳‘׳•׳ ${idx + 1}`) : (a.album?.title_en || a.album?.title_he || `Album ${idx + 1}`)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+
+                                {subsetMode === 'year' && (
+                                    <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="border border-slate-300 rounded-xl py-2 px-3 text-sm bg-white">
+                                        {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                    </select>
+                                )}
+
+                                {subsetMode === 'author' && (
+                                    <select value={selectedAuthor} onChange={(e) => setSelectedAuthor(e.target.value)} className="border border-slate-300 rounded-xl py-2 px-3 text-sm bg-white" dir="auto">
+                                        {authors.map(v => <option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                )}
+
+                                {subsetMode === 'publisher' && (
+                                    <select value={selectedPublisher} onChange={(e) => setSelectedPublisher(e.target.value)} className="border border-slate-300 rounded-xl py-2 px-3 text-sm bg-white" dir="auto">
+                                        {publishers.map(v => <option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                )}
+
+                                {subsetMode === 'custom' && (
+                                    <>
+                                        <input
+                                            value={customField}
+                                            onChange={(e) => setCustomField(e.target.value)}
+                                            placeholder={lang === 'he' ? '׳©׳ ׳©׳“׳” (׳׳׳©׳: title_en)' : 'Field name (e.g. title_en)'}
+                                            className="border border-slate-300 rounded-xl py-2 px-3 text-sm bg-white min-w-[170px]"
+                                            dir="auto"
+                                        />
+                                        <input
+                                            value={customValue}
+                                            onChange={(e) => setCustomValue(e.target.value)}
+                                            placeholder={lang === 'he' ? '׳¢׳¨׳ ׳׳—׳™׳₪׳•׳©' : 'Value to match'}
+                                            className="border border-slate-300 rounded-xl py-2 px-3 text-sm bg-white min-w-[190px]"
+                                            dir="auto"
+                                        />
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                                <div className="bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 font-bold">{lang === 'he' ? `׳׳›׳׳•׳: ${albums.length} ׳׳׳‘׳•׳׳™׳, ${corpusImages.length} ׳×׳׳•׳ ׳•׳×` : `Corpus: ${albums.length} albums, ${corpusImages.length} images`}</div>
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-blue-800 font-bold" dir="auto">{lang === 'he' ? `׳×׳×-׳§׳‘׳•׳¦׳”: ${subsetAlbums.length} ׳׳׳‘׳•׳׳™׳, ${subsetImages.length} ׳×׳׳•׳ ׳•׳×` : `Subset: ${subsetAlbums.length} albums, ${subsetImages.length} images`}</div>
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-emerald-800 font-bold">{lang === 'he' ? `׳׳©׳§׳ ׳™׳—׳¡׳™: ${subsetPct.toFixed(1)}%` : `Relative share: ${subsetPct.toFixed(1)}%`}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6">
+                        <div className="max-w-[1400px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
+                            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-5 py-3 bg-slate-900 text-white">
+                                    <h3 className="font-black text-lg">{lang === 'he' ? '׳”׳׳›׳׳•׳ ׳”׳›׳׳׳™' : 'Full Corpus'}</h3>
+                                    <p className="text-xs opacity-75">{lang === 'he' ? '׳›׳ ׳”׳׳׳‘׳•׳׳™׳ ׳™׳—׳“' : 'All albums together'}</p>
+                                </div>
+                                <div className="p-5">
+                                    {renderVisualizationByMode(compareMode, corpusImages, null) || (
+                                        <div className="text-sm text-slate-400">{lang === 'he' ? '׳׳™׳ ׳ ׳×׳•׳ ׳™׳ ׳׳”׳¦׳’׳”' : 'No data to display'}</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-5 py-3 bg-blue-600 text-white" dir="auto">
+                                    <h3 className="font-black text-lg">{lang === 'he' ? '׳×׳×-׳§׳‘׳•׳¦׳” ׳׳”׳©׳•׳•׳׳”' : 'Subset for Comparison'}</h3>
+                                    <p className="text-xs opacity-90">{subsetLabel}</p>
+                                </div>
+                                <div className="p-5">
+                                    {subsetImages.length > 0 ? (
+                                        renderVisualizationByMode(compareMode, subsetImages, null)
+                                    ) : (
+                                        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 text-center text-slate-500 text-sm">
+                                            {lang === 'he' ? '׳׳ ׳ ׳׳¦׳׳• ׳₪׳¨׳™׳˜׳™׳ ׳‘׳×׳×-׳”׳§׳‘׳•׳¦׳”. ׳ ׳¡׳• ׳׳©׳ ׳•׳× ׳׳× ׳”׳׳¡׳ ׳.' : 'No items matched this subset. Try another filter.'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        // --- App Component ---

@@ -1,0 +1,45 @@
+﻿        const AboutTab = ({ lang = 'he' }) => {
+            return (
+                <div className="h-full overflow-y-auto bg-slate-50 p-6 md:p-10 fade-in">
+                    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+                        <div className="bg-white border border-slate-200 rounded-3xl p-7 md:p-10 shadow-sm">
+                            <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-4 flex items-center gap-3">
+                                <i className="ph-fill ph-info text-blue-600"></i>
+                                {lang === 'he' ? '׳׳•׳“׳•׳× ׳”׳׳¢׳¨׳›׳×' : 'About This System'}
+                            </h2>
+                            <p className="text-slate-700 leading-relaxed mb-4" dir={lang === 'he' ? 'rtl' : 'ltr'}>
+                                {lang === 'he'
+                                    ? '׳”׳׳¢׳¨׳›׳× ׳ ׳‘׳ ׳×׳” ׳›׳—׳׳§ ׳׳₪׳¨׳•׳™׳§׳˜ ׳”׳¢׳•׳¡׳§ ׳‘׳ ׳™׳×׳•׳— "׳׳׳‘׳•׳׳™ ׳×׳׳•׳ ׳•׳× ׳׳׳•׳׳™׳™׳ ׳©׳ ׳׳“׳™׳ ׳× ׳™׳©׳¨׳׳".'
+                                    : 'This system was built as part of a project on analyzing national photo albums of the State of Israel.'}
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                    <div className="text-slate-500 font-bold mb-1">{lang === 'he' ? '׳”׳ ׳—׳™׳”' : 'Supervision'}</div>
+                                    <div className="text-slate-800" dir="auto">׳׳׳™׳¢׳–׳¨ ׳‘׳׳•׳׳’׳¨׳˜׳ (׳׳•׳ ׳™׳‘׳¨׳¡׳™׳˜׳× ׳—׳™׳₪׳”)</div>
+                                    <div className="text-slate-800" dir="auto">׳’׳׳™׳” ׳™׳ ׳•׳©׳‘׳¡׳§׳™ ׳•׳¨׳•׳¢׳™ ׳’׳׳‘׳¨׳“ (׳׳•׳ ׳™׳‘׳¨׳¡׳™׳˜׳× ׳‘׳¨-׳׳™׳׳)</div>
+                                </div>
+                                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                    <div className="text-slate-500 font-bold mb-1">{lang === 'he' ? '׳—׳™׳׳•׳¥ ׳“׳׳˜׳”' : 'Data Extraction'}</div>
+                                    <div className="text-slate-800" dir="auto">׳¨׳•׳ ׳׳׳§׳•׳‘׳™</div>
+                                    <div className="text-slate-500 font-bold mt-3 mb-1">{lang === 'he' ? '׳™׳¦׳™׳¨׳× ׳§׳©׳¨' : 'Contact'}</div>
+                                    <div className="text-slate-800" dir="ltr">beliezer [at] staff.haifa.ac.il</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white border border-slate-200 rounded-3xl p-7 shadow-sm">
+                            <h3 className="text-xl font-black text-slate-900 mb-2">{lang === 'he' ? '׳’׳¨׳¡׳” 2 ג€“ ׳×׳•׳¡׳₪׳•׳× ׳׳¨׳›׳–׳™׳•׳×' : 'Version 2 - Main Additions'}</h3>
+                            <ul className="text-slate-700 text-sm leading-7">
+                                <li>{lang === 'he' ? '׳˜׳׳‘ ׳—׳™׳₪׳•׳© ׳›׳׳׳™ ׳¢׳ ׳›׳׳ ׳”׳×׳׳•׳ ׳•׳× ׳•׳”׳׳׳‘׳•׳׳™׳.' : 'Global search tab across all images and albums.'}</li>
+                                <li>{lang === 'he' ? '׳˜׳׳‘ distant reading ׳׳”׳©׳•׳•׳׳× ׳”׳׳›׳׳•׳ ׳”׳›׳׳׳™ ׳׳•׳ ׳×׳×׳™-׳§׳‘׳•׳¦׳•׳×.' : 'Corpus distant-reading tab comparing the full corpus to subsets.'}</li>
+                                <li>{lang === 'he' ? '׳׳ ׳’׳ ׳•׳ ׳׳¢׳‘׳¨ ׳‘׳™׳ V1 ׳-V2 ׳“׳¨׳ ׳§׳‘׳¦׳™ ׳’׳¨׳¡׳” ׳™׳™׳¢׳•׳“׳™׳™׳.' : 'Version switching between V1 and V2 via dedicated version files.'}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // VIZ 15: ׳₪׳¢׳•׳׳•׳× ג€“ Actions Frequency Chart
+        // ==========================================

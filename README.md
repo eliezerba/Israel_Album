@@ -4,6 +4,31 @@ Interactive single-page viewer for 20 Israeli heritage photobooks, with 15 visua
 
 Built with React 18 (CDN) + Tailwind CSS, no build step required.
 
+## Version 2 highlights
+
+- About tab with project credits and contact details
+- Global image search tab across all albums
+- Corpus distant-reading tab: compare full corpus vs subset (single album, year, author, publisher, or custom metadata field)
+
+---
+
+## Version switching (V1 <-> V2)
+
+The workspace keeps both interface versions:
+
+- `index_v1.html` - original V1 snapshot
+- `index_v2.html` - current V2 snapshot
+- `index.html` - active version served by the app
+
+Switch active version with PowerShell:
+
+```powershell
+.\switch_version.ps1 -To v1
+.\switch_version.ps1 -To v2
+```
+
+After switching, refresh the browser.
+
 ---
 
 ## Running locally (full mode — recommended)
