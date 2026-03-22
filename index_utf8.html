@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>אלבומי תמונות לאומיים של מדינת ישראל | בר-אילן · חיפה</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web" crossorigin="anonymous"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin="anonymous"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; overflow-x: hidden; }
+        
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .barcode-stripe { transition: opacity 0.2s; }
+        .barcode-stripe:hover { opacity: 0.5; cursor: pointer; }
+        
+        .img-card:hover .img-overlay { opacity: 1; }
+        .obj-bubble { transition: all 0.2s ease; }
+        .obj-bubble:hover { transform: scale(1.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 10; }
+
+        .treemap-node { transition: all 0.3s; border: 1px solid rgba(255,255,255,0.2); }
+        .treemap-node:hover { filter: brightness(1.1); transform: scale(0.99); box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 10; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col overflow-hidden">
+    <div id="root" class="h-full flex flex-col"></div>
+    <div id="tt-root" style="position:fixed;top:0;left:0;width:0;height:0;z-index:9999;pointer-events:none;"></div>
+    <div id="err" style="display:none;position:fixed;top:0;left:0;right:0;background:#fee2e2;color:#991b1b;padding:16px;font-family:monospace;font-size:13px;z-index:99999;overflow:auto;max-height:60vh;white-space:pre-wrap;"></div>
+    <script>
+      function showErr(msg) { var d=document.getElementById('err'); d.style.display='block'; d.textContent=msg; }
+      window.onerror=function(m,s,l,c,e){ showErr('JS Error line '+l+' col '+c+': '+m+'\nSource: '+s+'\n'+(e&&e.stack?e.stack:'')); };
+      window.addEventListener('unhandledrejection',function(e){ showErr('Unhandled Promise: '+(e.reason&&e.reason.stack?e.reason.stack:e.reason)); });
+      // Intercept Babel transform errors
+      document.addEventListener('DOMContentLoaded',function(){
+        var orig = window.Babel && window.Babel.transform;
+        if(orig) { window.Babel.transform = function(code,opts){ try{ return orig.call(this,code,opts); } catch(e){ showErr('Babel parse error:\n'+e.message); throw e; } }; }
+      });
+    </script>
+
+    <script type="text/babel">
+// ...existing code in UTF-8, including all Hebrew strings, comments, and UI text...
+// יש להעתיק את כל הקוד מהקובץ המקורי, אך לשמור אותו ב-UTF-8 בלבד
+    </script>
+</body>
+</html>

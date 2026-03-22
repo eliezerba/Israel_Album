@@ -142,11 +142,18 @@
         // On GitHub Pages or other static hosts, fall back to direct S3 URI.
         const IS_SERVER = typeof window !== 'undefined' &&
             ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
-        const getImgSrc = (img) => {
-            if (!img) return '';
-            if (IS_SERVER && img.image_id) return `/img/${encodeURIComponent(img.image_id)}`;
-            return img.uri || '';
+        const IS_GHPAGES = typeof window !== 'undefined' &&
+            window.location.hostname.endsWith('github.io');
+        const getImgSrcCandidates = (img) => {
+            if (!img) return [];
+            const candidates = [];
+            if (IS_SERVER && img.image_id) candidates.push('/img/' + encodeURIComponent(img.image_id));
+            if (IS_GHPAGES && img.image_id) candidates.push('images/' + encodeURIComponent(img.image_id) + '.jpg');
+            if (img.uri) candidates.push(img.uri);
+            if (!IS_GHPAGES && img.image_id) candidates.push('images/' + encodeURIComponent(img.image_id) + '.jpg');
+            return candidates.filter((v, i, a) => v && a.indexOf(v) === i);
         };
+        const getImgSrc = (img) => getImgSrcCandidates(img)[0] || '';
 
         // ── Floating chart tooltip (portal to dedicated fixed root) ──────────
         const ChartTooltip = ({ tooltip }) => {
@@ -398,15 +405,22 @@
             const [shouldRender, setShouldRender] = useState(eager);
             const [isLoaded, setIsLoaded] = useState(false);
             const [hasError, setHasError] = useState(false);
+            const [srcIndex, setSrcIndex] = useState(0);
+            const sources = useMemo(() => {
+                if (!src) return [];
+                return Array.isArray(src) ? src.filter(Boolean) : [src];
+            }, [src]);
+            const currentSrc = sources[srcIndex] || '';
 
             useEffect(() => {
                 setHasError(false);
                 setIsLoaded(false);
                 setShouldRender(eager);
+                setSrcIndex(0);
             }, [src, eager]);
 
             useEffect(() => {
-                if (!src || eager || shouldRender) return;
+                if (!currentSrc || eager || shouldRender) return;
                 const node = containerRef.current;
                 if (!node || typeof IntersectionObserver === 'undefined') {
                     setShouldRender(true);
@@ -420,27 +434,35 @@
                 }, { rootMargin: '320px' });
                 observer.observe(node);
                 return () => observer.disconnect();
-            }, [src, eager, shouldRender]);
+            }, [currentSrc, eager, shouldRender]);
 
             return (
                 <div ref={containerRef} className="w-full h-full bg-slate-200 relative overflow-hidden">
                     {!isLoaded && !hasError && (
                         <div className="absolute inset-0 bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 animate-pulse"></div>
                     )}
-                    {src && shouldRender && !hasError && (
+                    {currentSrc && shouldRender && !hasError && (
                         <img
-                            src={src}
+                            src={currentSrc}
                             alt={alt || ''}
                             referrerPolicy="no-referrer"
                             loading={eager ? 'eager' : 'lazy'}
                             decoding="async"
                             fetchPriority={eager ? 'high' : 'low'}
                             onLoad={() => setIsLoaded(true)}
-                            onError={() => setHasError(true)}
+                            onError={() => {
+                                if (srcIndex + 1 < sources.length) {
+                                    setIsLoaded(false);
+                                    setHasError(false);
+                                    setSrcIndex(i => i + 1);
+                                } else {
+                                    setHasError(true);
+                                }
+                            }}
                             className={`${className} ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300`}
                         />
                     )}
-                    {(!src || hasError) && (
+                    {(!currentSrc || hasError) && (
                         <div className="flex flex-col items-center justify-center h-full text-slate-400">
                             <i className="ph ph-image-broken text-3xl"></i>
                         </div>
@@ -1810,7 +1832,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 max-w-screen-2xl mx-auto pb-20">
                             {filtered.map(({ al, idx }) => {
                                 const cover = al.images.find(img => img.image_num === 1) || al.images[0];
-                                const coverSrc = cover ? getImgSrc(cover) : null;
+                                const coverSrc = cover ? getImgSrcCandidates(cover) : null;
                                 const title = lang === 'he' ? (al.album.title_he || al.album.title_en || '?') : (al.album.title_en || al.album.title_he || '?');
                                 const subtitle = lang === 'he' ? (al.album.title_en || '') : (al.album.title_he || '');
                                 return (
@@ -1950,7 +1972,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                             {displayedImages.map((img, idx) => (
                                 <div key={img.image_id} onClick={() => setFocusedImage(idx)} className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden cursor-pointer img-card group flex flex-col aspect-[3/4] relative">
                                     <div className="flex-1 bg-slate-200 relative overflow-hidden">
-                                        <OptimizedImage src={getImgSrc(img)} alt={`Album page ${img.image_num}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        <OptimizedImage src={getImgSrcCandidates(img)} alt={`Album page ${img.image_num}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 img-overlay transition-opacity flex flex-col justify-end p-4 text-white">
                                             {img.parsedMetadata.Scene && <span className="text-xs font-bold truncate">{img.parsedMetadata.Scene.split(',')[0]}</span>}
                                         </div>
@@ -1972,7 +1994,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                                 <div className="flex-1 relative flex items-center justify-center p-4 lg:p-12 group">
                                     <button onClick={(e) => { e.stopPropagation(); setFocusedImage(prev => prev < displayedImages.length - 1 ? prev + 1 : prev); }} disabled={focusedImage === displayedImages.length - 1} className="absolute right-4 z-40 bg-black/50 hover:bg-black text-white p-4 rounded-full disabled:opacity-0"><i className="ph-bold ph-caret-right text-2xl"></i></button>
                                     <button onClick={(e) => { e.stopPropagation(); setFocusedImage(prev => prev > 0 ? prev - 1 : prev); }} disabled={focusedImage === 0} className="absolute left-4 z-40 bg-black/50 hover:bg-black text-white p-4 rounded-full disabled:opacity-0"><i className="ph-bold ph-caret-left text-2xl"></i></button>
-                                    <OptimizedImage src={getImgSrc(img)} alt={`Album page ${img.image_num}`} eager={true} className="max-w-full max-h-full object-contain drop-shadow-2xl mx-auto" />
+                                    <OptimizedImage src={getImgSrcCandidates(img)} alt={`Album page ${img.image_num}`} eager={true} className="max-w-full max-h-full object-contain drop-shadow-2xl mx-auto" />
                                 </div>
                                 <div className="w-full md:w-[450px] bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto shadow-2xl">
                                     <div className="p-6 border-b border-slate-100 bg-slate-50 sticky top-0 z-10 flex items-center gap-4">
@@ -2163,7 +2185,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                                     {results.map((item, idx) => (
                                         <div key={`${item.image_id}-${idx}`} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                             <button onClick={() => setFocusedIndex(idx)} className="w-full h-56 bg-slate-100 block">
-                                                <OptimizedImage src={getImgSrc(item)} alt={`${item.titleEn} page ${item.image_num || '?'}`} className="w-full h-full object-cover" />
+                                                <OptimizedImage src={getImgSrcCandidates(item)} alt={`${item.titleEn} page ${item.image_num || '?'}`} className="w-full h-full object-cover" />
                                             </button>
                                             <div className="p-3 space-y-2">
                                                 <div className="text-xs text-slate-500 font-bold" dir="auto">
@@ -2195,7 +2217,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                         <div className="absolute inset-0 z-50 bg-slate-900/90 backdrop-blur-sm p-4 md:p-8 fade-in" onClick={() => setFocusedIndex(null)}>
                             <div className="max-w-6xl mx-auto h-full bg-white rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-[1.4fr,1fr]" onClick={(e) => e.stopPropagation()}>
                                 <div className="bg-slate-100 flex items-center justify-center p-6">
-                                    <OptimizedImage src={getImgSrc(selected)} alt={selected.titleEn} eager={true} className="max-w-full max-h-full object-contain" />
+                                    <OptimizedImage src={getImgSrcCandidates(selected)} alt={selected.titleEn} eager={true} className="max-w-full max-h-full object-contain" />
                                 </div>
                                 <div className="p-6 overflow-y-auto">
                                     <div className="flex items-center justify-between mb-4">
