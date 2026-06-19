@@ -149,7 +149,7 @@
             const candidates = [];
             if (IS_SERVER && img.image_id) candidates.push('/img/' + encodeURIComponent(img.image_id));
             if (IS_GHPAGES && img.image_id) candidates.push('images/' + encodeURIComponent(img.image_id) + '.jpg');
-            if (img.uri) candidates.push(img.uri);
+            if (img.uri) candidates.push(img.uri.split('?')[0]);
             if (!IS_GHPAGES && img.image_id) candidates.push('images/' + encodeURIComponent(img.image_id) + '.jpg');
             return candidates.filter((v, i, a) => v && a.indexOf(v) === i);
         };

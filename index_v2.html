@@ -145,7 +145,7 @@
         const getImgSrc = (img) => {
             if (!img) return '';
             if (IS_SERVER && img.image_id) return `/img/${encodeURIComponent(img.image_id)}`;
-            return img.uri || '';
+            return img.uri ? img.uri.split('?')[0] : '';
         };
 
         // ── Floating chart tooltip (portal to dedicated fixed root) ──────────

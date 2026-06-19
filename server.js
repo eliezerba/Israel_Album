@@ -44,7 +44,7 @@ function buildUrlMap() {
     urlMap = {};
     loadAlbums().forEach(album => {
         (album.images || []).forEach(img => {
-            if (img.image_id && img.uri) urlMap[img.image_id] = img.uri;
+            if (img.image_id && img.uri) urlMap[img.image_id] = img.uri.split('?')[0];
         });
     });
     return urlMap;
