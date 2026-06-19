@@ -13,7 +13,7 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin="anonymous"></script>
     <!-- Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js" crossorigin="anonymous"></script>
 
     <style>
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -51,7 +51,7 @@
       });
     </script>
 
-    <script type="text/babel">
+    <script type="text/babel" data-presets="env,react">
         const { useState, useMemo, useEffect, useCallback, useRef } = React;
 
         // ── Language context ───────────────────────────────────────────────────
