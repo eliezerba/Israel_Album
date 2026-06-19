@@ -144,10 +144,12 @@
             ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
         const IS_GHPAGES = typeof window !== 'undefined' &&
             window.location.hostname.endsWith('github.io');
+        const IS_FILE_PROTOCOL = typeof window !== 'undefined' && window.location.protocol === 'file:';
         const getImgSrcCandidates = (img) => {
             if (!img) return [];
             const candidates = [];
             if (IS_SERVER && img.image_id) candidates.push('/img/' + encodeURIComponent(img.image_id));
+            if (IS_FILE_PROTOCOL && img.image_id) candidates.push('.image_cache/' + encodeURIComponent(img.image_id) + '.jpg');
             if (IS_GHPAGES && img.image_id) candidates.push('images/' + encodeURIComponent(img.image_id) + '.jpg');
             if (img.uri) candidates.push(img.uri.split('?')[0]);
             if (!IS_GHPAGES && img.image_id) candidates.push('images/' + encodeURIComponent(img.image_id) + '.jpg');

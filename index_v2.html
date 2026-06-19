@@ -142,9 +142,11 @@
         // On GitHub Pages or other static hosts, fall back to direct S3 URI.
         const IS_SERVER = typeof window !== 'undefined' &&
             ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
+        const IS_FILE_PROTOCOL = typeof window !== 'undefined' && window.location.protocol === 'file:';
         const getImgSrc = (img) => {
             if (!img) return '';
             if (IS_SERVER && img.image_id) return `/img/${encodeURIComponent(img.image_id)}`;
+            if (IS_FILE_PROTOCOL && img.image_id) return `.image_cache/${encodeURIComponent(img.image_id)}.jpg`;
             return img.uri ? img.uri.split('?')[0] : '';
         };
 
