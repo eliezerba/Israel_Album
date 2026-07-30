@@ -80,7 +80,7 @@ If the NarrativeVision backend (Docker) is running locally on port 8000:
 ```
 
 This downloads all albums that are not yet in the folder (skips existing ones).  
-To re-download everything (to refresh expired S3 URLs), delete the existing `album_*.json` files first.
+To re-download everything (to refresh expired S3 URLs), delete the existing `data/album_*.json` files first.
 
 ---
 

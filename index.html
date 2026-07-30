@@ -252,6 +252,51 @@
             return normalized;
         };
 
+        const getAlbumIdentity = (album) => {
+            const meta = album?.album || {};
+            return [meta.id, meta.title_en, meta.title_he]
+                .map(value => String(value || '').trim().toLowerCase())
+                .filter(Boolean)
+                .join('|');
+        };
+
+        const getAlbumDisplayTitle = (album, lang = 'he', index = 0) => {
+            const meta = album?.album || {};
+            return lang === 'he'
+                ? (meta.title_he || meta.title_en || `אלבום ${index + 1}`)
+                : (meta.title_en || meta.title_he || `Album ${index + 1}`);
+        };
+
+        const normalizeAlbumCollection = (albums = []) => {
+            const seen = new Set();
+            const normalized = [];
+
+            albums.forEach((album) => {
+                if (!album) return;
+                const key = getAlbumIdentity(album) || JSON.stringify([
+                    album?.album?.id || '',
+                    album?.album?.title_en || '',
+                    album?.album?.title_he || ''
+                ]);
+                if (seen.has(key)) return;
+                seen.add(key);
+                normalized.push({
+                    ...album,
+                    images: (album.images || [])
+                        .map(enrichImageMetadata)
+                        .sort((a, b) => (a.image_num || 0) - (b.image_num || 0))
+                });
+            });
+
+            return normalized;
+        };
+
+        const sortAlbumEntriesForDisplay = (albums = [], lang = 'he') => {
+            return albums
+                .map((album, idx) => ({ album, idx, label: getAlbumDisplayTitle(album, lang, idx) }))
+                .sort((a, b) => a.label.localeCompare(b.label, lang === 'he' ? 'he' : 'en', { numeric: true, sensitivity: 'base' }));
+        };
+
         const readAlbumField = (albumObj, fieldName) => {
             if (!albumObj || !fieldName) return '';
             const key = String(fieldName).trim();
@@ -1783,13 +1828,22 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                     });
                 }
                 list.sort((a, b) => {
-                    let va, vb;
-                    if (sortBy === 'year') { va = parseInt(a.al.album.year) || 0; vb = parseInt(b.al.album.year) || 0; }
-                    else if (sortBy === 'images') { va = a.al.images.length; vb = b.al.images.length; }
-                    else { va = (a.al.album.title_en || a.al.album.title_he || '').toLowerCase(); vb = (b.al.album.title_en || b.al.album.title_he || '').toLowerCase(); }
-                    if (va < vb) return sortDir === 'asc' ? -1 : 1;
-                    if (va > vb) return sortDir === 'asc' ? 1 : -1;
-                    return 0;
+                    if (sortBy === 'year') {
+                        const va = parseInt(a.al.album.year) || 0;
+                        const vb = parseInt(b.al.album.year) || 0;
+                        return sortDir === 'asc' ? (va - vb) : (vb - va);
+                    }
+                    if (sortBy === 'images') {
+                        const va = a.al.images.length;
+                        const vb = b.al.images.length;
+                        return sortDir === 'asc' ? (va - vb) : (vb - va);
+                    }
+                    const compare = getAlbumDisplayTitle(a.al, lang, a.idx).localeCompare(
+                        getAlbumDisplayTitle(b.al, lang, b.idx),
+                        lang === 'he' ? 'he' : 'en',
+                        { numeric: true, sensitivity: 'base' }
+                    );
+                    return sortDir === 'asc' ? compare : -compare;
                 });
                 return list;
             }, [albums, search, sortBy, sortDir]);
@@ -1899,6 +1953,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
         const GalleryTab = ({ albums, activeAlbumIndex, onAlbumChange, filter, setFilter, lang='he' }) => {
             const [focusedImage, setFocusedImage] = useState(null);
             const activeAlbum = albums[activeAlbumIndex];
+            const sortedAlbumEntries = useMemo(() => sortAlbumEntriesForDisplay(albums, lang), [albums, lang]);
 
             if (!activeAlbum) return null;
 
@@ -1946,9 +2001,9 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                             className="flex-1 max-w-lg border border-slate-300 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-400 cursor-pointer"
                             dir="auto"
                         >
-                            {albums.map((al, idx) => (
+                            {sortedAlbumEntries.map(({ album: al, idx }) => (
                                 <option key={idx} value={idx}>
-                                    {lang === 'he' ? (al.album.title_he || al.album.title_en || `אלבום ${idx+1}`) : (al.album.title_en || al.album.title_he || `Album ${idx+1}`)}
+                                    {getAlbumDisplayTitle(al, lang, idx)}
                                     {al.album.year ? ` (שנת ${al.album.year})` : ''}
                                 </option>
                             ))}
@@ -2058,6 +2113,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
             const [query, setQuery] = useState('');
             const [albumFilter, setAlbumFilter] = useState('all');
             const [focusedIndex, setFocusedIndex] = useState(null);
+            const sortedAlbumEntries = useMemo(() => sortAlbumEntriesForDisplay(albums, lang), [albums, lang]);
 
             const dataset = useMemo(() => {
                 return albums.flatMap((album, albumIndex) => {
@@ -2151,9 +2207,9 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                                 dir="auto"
                             >
                                 <option value="all">{lang === 'he' ? 'כל האלבומים' : 'All albums'}</option>
-                                {albums.map((al, idx) => (
+                                {sortedAlbumEntries.map(({ album: al, idx }) => (
                                     <option key={idx} value={String(idx)}>
-                                        {lang === 'he' ? (al.album?.title_he || al.album?.title_en || `אלבום ${idx + 1}`) : (al.album?.title_en || al.album?.title_he || `Album ${idx + 1}`)}
+                                        {getAlbumDisplayTitle(al, lang, idx)}
                                     </option>
                                 ))}
                             </select>
@@ -2374,6 +2430,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
 
             const [groupA, setGroupA] = useState(() => createInitialGroup(0, 'all'));
             const [groupB, setGroupB] = useState(() => createInitialGroup(1, 'manual'));
+            const sortedAlbumEntries = useMemo(() => sortAlbumEntriesForDisplay(albums, lang), [albums, lang]);
 
             const years = useMemo(() => {
                 return [...new Set(albums.map(a => String(a.album?.year || '')).filter(Boolean))].sort();
@@ -2538,7 +2595,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                                     <div className="flex items-center gap-3 px-2 pb-2 mb-1 border-b border-slate-200 text-xs font-bold">
                                         <button
                                             type="button"
-                                            onClick={() => setGroup(prev => ({ ...prev, selectedAlbumIdxs: albums.map((_, i) => i) }))}
+                                            onClick={() => setGroup(prev => ({ ...prev, selectedAlbumIdxs: sortedAlbumEntries.map(({ idx }) => idx) }))}
                                             className="text-blue-600 hover:underline"
                                         >
                                             {lang === 'he' ? 'בחר הכל' : 'Select all'}
@@ -2552,7 +2609,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                                         </button>
                                     </div>
                                     <div className="space-y-1">
-                                        {albums.map((a, idx) => {
+                                        {sortedAlbumEntries.map(({ album: a, idx }) => {
                                             const checked = (group.selectedAlbumIdxs || []).includes(idx);
                                             return (
                                                 <label key={idx} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white cursor-pointer" dir="auto">
@@ -2586,11 +2643,9 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                                     className="border border-slate-300 rounded-xl py-2 px-3 text-sm bg-white"
                                     dir="auto"
                                 >
-                                    {albums.map((a, idx) => (
+                                    {sortedAlbumEntries.map(({ album: a, idx }) => (
                                         <option key={idx} value={idx}>
-                                            {lang === 'he'
-                                                ? (a.album?.title_he || a.album?.title_en || `אלבום ${idx + 1}`)
-                                                : (a.album?.title_en || a.album?.title_he || `Album ${idx + 1}`)}
+                                            {getAlbumDisplayTitle(a, lang, idx)}
                                         </option>
                                     ))}
                                 </select>
@@ -2752,13 +2807,7 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                 }
                 const processAlbums = (data) => {
                     if (!Array.isArray(data) || data.length === 0) { setAutoLoading(false); return; }
-                    const enhanced = data.map(json => ({
-                        ...json,
-                        images: (json.images || [])
-                            .map(img => ({ ...img, parsedMetadata: parseCaptionString(img.caption) }))
-                            .sort((a, b) => a.image_num - b.image_num)
-                    }));
-                    setAlbums(enhanced);
+                    setAlbums(normalizeAlbumCollection(data));
                     setAutoLoading(false);
                 };
                 // Try server API first (node server.js)
@@ -2787,8 +2836,14 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                     try {
                         const json = JSON.parse(e.target.result);
                         const enhancedImages = (json.images || []).map(img => ({ ...img, parsedMetadata: parseCaptionString(img.caption) })).sort((a, b) => a.image_num - b.image_num);
-                        setAlbums(prev => [...prev, { ...json, images: enhancedImages }]);
-                        setActiveAlbumIndex(albums.length); 
+                        const uploadedAlbum = { ...json, images: enhancedImages };
+                        const uploadedKey = getAlbumIdentity(uploadedAlbum);
+                        const merged = normalizeAlbumCollection([
+                            ...albums.filter(album => getAlbumIdentity(album) !== uploadedKey),
+                            uploadedAlbum
+                        ]);
+                        setAlbums(merged);
+                        setActiveAlbumIndex(Math.max(0, merged.findIndex(album => getAlbumIdentity(album) === uploadedKey)));
                     } catch (error) { alert('שגיאה בקריאת הקובץ.'); }
                 };
                 reader.readAsText(file);
@@ -2915,9 +2970,9 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                                         className="flex-1 max-w-lg border border-slate-300 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-400 cursor-pointer"
                                         dir="auto"
                                     >
-                                        {albums.map((al, idx) => (
+                                        {sortAlbumEntriesForDisplay(albums, lang).map(({ album: al, idx }) => (
                                             <option key={idx} value={idx}>
-                                                {lang === 'he' ? (al.album.title_he || al.album.title_en || `אלבום ${idx+1}`) : (al.album.title_en || al.album.title_he || `Album ${idx+1}`)}
+                                                {getAlbumDisplayTitle(al, lang, idx)}
                                                 {al.album.year ? ` (שנת ${al.album.year})` : ''}
                                             </option>
                                         ))}
