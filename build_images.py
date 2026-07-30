@@ -7,8 +7,10 @@ root = Path(r"c:/Users/user/Ilanot Project Dropbox/Eliezer Baumgarten/אקדמי
 cache_dir = root / '.image_cache'
 out_dir = root / 'images'
 out_dir.mkdir(exist_ok=True)
+data_dir = root / 'data'
 
-json_files = sorted(root.glob('album_*.json'))
+source_dir = data_dir if data_dir.exists() else root
+json_files = sorted(source_dir.glob('album_*.json'))
 ids = []
 for jf in json_files:
     try:

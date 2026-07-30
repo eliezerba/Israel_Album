@@ -1,4 +1,5 @@
-$outDir = "c:\Users\user\Ilanot Project Dropbox\Eliezer Baumgarten\אקדמיה\digital humanities\פלטפורמות הצגה\Israel_Album"
+$outDir = "c:\Users\user\Ilanot Project Dropbox\Eliezer Baumgarten\אקדמיה\digital humanities\פלטפורמות הצגה\Israel_Album\data"
+$null = New-Item -ItemType Directory -Path $outDir -Force
 $BASE = "http://localhost:8000"
 
 # Albums already downloaded (by id)

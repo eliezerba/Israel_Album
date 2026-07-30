@@ -17,6 +17,8 @@ const path  = require('path');
 
 const PORT       = process.env.PORT || 4040;
 const FOLDER     = __dirname;
+const DATA_DIR   = path.join(FOLDER, 'data');
+const ALBUM_DIR  = fs.existsSync(DATA_DIR) ? DATA_DIR : FOLDER;
 const CACHE_DIR  = path.join(FOLDER, '.image_cache');
 
 // Create image cache directory if it doesn’t exist
@@ -24,12 +26,16 @@ if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
 // ── Collect all album_*.json files ─────────────────────────────────────
 function loadAlbums() {
-    return fs.readdirSync(FOLDER)
+    return fs.readdirSync(ALBUM_DIR)
         .filter(name => name.startsWith('album_') && name.endsWith('.json'))
         .map(name => {
             try {
-                const raw = fs.readFileSync(path.join(FOLDER, name), 'utf8').replace(/^\uFEFF/, '');
-                return JSON.parse(raw);
+                const raw = fs.readFileSync(path.join(ALBUM_DIR, name), 'utf8').replace(/^\uFEFF/, '');
+                const album = JSON.parse(raw);
+                if (album?.album?.title_en === '0' || album?.album?.title_he === '0') {
+                    console.warn('⚠️  Suspicious album title "0" in', name, '- please fix the source JSON');
+                }
+                return album;
             } catch (e) {
                 console.error('Could not parse', name, e.message);
                 return null;
@@ -210,11 +216,11 @@ const server = http.createServer((req, res) => {
     }
 
     // ── Static files ───────────────────────────────────────────────────────
-    const safeName = path.basename(pathname === '/' ? 'index.html' : pathname);
-    const filePath = path.join(FOLDER, safeName);
+    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
+    const filePath = path.resolve(FOLDER, relativePath);
 
     // Security: reject path traversal attempts
-    if (!filePath.startsWith(FOLDER + path.sep) && filePath !== path.join(FOLDER, safeName)) {
+    if (filePath !== FOLDER && !filePath.startsWith(FOLDER + path.sep)) {
         res.writeHead(403);
         res.end('Forbidden');
         return;
@@ -223,7 +229,7 @@ const server = http.createServer((req, res) => {
     fs.readFile(filePath, (err, data) => {
         if (err) {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Not found: ' + safeName);
+            res.end('Not found: ' + relativePath);
             return;
         }
         const ext  = path.extname(filePath).toLowerCase();

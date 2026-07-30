@@ -2221,13 +2221,13 @@ ${data.tPct.toFixed(1)}% מסך המידע`})}
                     .then(r => { if (!r.ok) throw new Error('no-server'); return r.json(); })
                     .then(processAlbums)
                     .catch(() => {
-                        // Static fallback (GitHub Pages): load albums_list.json then each album JSON
-                        fetch('albums_list.json')
+                        // Static fallback (GitHub Pages): load data/albums_list.json then each album JSON
+                        fetch('data/albums_list.json')
                             .then(r => r.json())
                             .then(names => Promise.all(
-                                names.map(n => fetch(encodeURIComponent(n))
-                                    .then(r => r.ok ? r.json() : null)
-                                    .catch(() => null))
+                                names.map(n => fetch('data/' + encodeURIComponent(n))
+                                    .then(r => r.ok ? r.json() : fetch(encodeURIComponent(n)).then(r2 => r2.ok ? r2.json() : null))
+                                    .catch(() => fetch(encodeURIComponent(n)).then(r2 => r2.ok ? r2.json() : null).catch(() => null)))
                             ))
                             .then(results => processAlbums(results.filter(Boolean)))
                             .catch(() => setAutoLoading(false));

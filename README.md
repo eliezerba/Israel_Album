@@ -64,7 +64,7 @@ The viewer also works as a **static site** on GitHub Pages (no Node.js required)
 Enable GitHub Pages in your repo settings → point to the **main** branch root.
 
 In static mode:
-- Albums load from the `album_*.json` files committed to the repo (via `albums_list.json`)
+- Albums load from the `data/album_*.json` files committed to the repo (via `data/albums_list.json`)
 - Images load **directly from S3** using the signed URLs stored in the JSON files
 - ⚠️ **S3 signed URLs expire after 7 days.** After that, images will stop loading.  
   To refresh them, re-run `download_albums.ps1` (requires the NarrativeVision Docker stack to be running locally on port 8000) and push the updated JSON files.
@@ -108,7 +108,7 @@ Each `album_*.json` file has this structure:
 }
 ```
 
-To add a new album manually, drop a JSON file named `album_<title>.json` in the folder and restart the server (or refresh the page).
+To add a new album manually, drop a JSON file named `album_<title>.json` into `data/` and restart the server (or refresh the page).
 
 ---
 
@@ -117,8 +117,7 @@ To add a new album manually, drop a JSON file named `album_<title>.json` in the 
 ```
 index.html          ← Single-file React app (all visualizations)
 server.js           ← Node.js HTTP server + S3 image proxy
-albums_list.json    ← List of album JSON filenames (for GitHub Pages)
-album_*.json        ← Album data (20 albums, ~4 MB total)
+data/               ← Album JSON data + albums_list.json
 download_albums.ps1 ← Script to fetch albums from local Docker backend
 .gitignore          ← Excludes .image_cache/ (large binary files)
 package.json        ← npm start script

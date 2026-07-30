@@ -10,6 +10,9 @@ const path  = require('path');
 
 const API  = 'http://localhost:8000';
 const DIR  = __dirname;
+const DATA_DIR = path.join(DIR, 'data');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function get(url) {
     return new Promise((resolve, reject) => {
@@ -45,11 +48,11 @@ async function main() {
     // Existing album ids already on disk
     const existing = new Set(
         force ? [] :
-        fs.readdirSync(DIR)
+        fs.readdirSync(DATA_DIR)
             .filter(n => n.startsWith('album_') && n.endsWith('.json'))
             .map(n => {
                 try {
-                    const raw = fs.readFileSync(path.join(DIR, n), 'utf8').replace(/^\uFEFF/, '');
+                    const raw = fs.readFileSync(path.join(DATA_DIR, n), 'utf8').replace(/^\uFEFF/, '');
                     return JSON.parse(raw).album?.id;
                 } catch { return null; }
             })
@@ -101,11 +104,11 @@ async function main() {
         const title    = meta.title_en || meta.title_he || al.id;
         const safeName = title.replace(/[\\/:*?"<>|]/g, '_');
         const filename = `album_${safeName}.json`;
-        const filepath = path.join(DIR, filename);
+        const filepath = path.join(DATA_DIR, filename);
 
         // If a file with this name exists, append the ID to disambiguate
         const finalPath = fs.existsSync(filepath)
-            ? path.join(DIR, `album_${safeName} (${al.id}).json`)
+            ? path.join(DATA_DIR, `album_${safeName} (${al.id}).json`)
             : filepath;
 
         fs.writeFileSync(finalPath, JSON.stringify(out, null, 2), 'utf8');
@@ -114,14 +117,14 @@ async function main() {
     }
 
     // Also collect existing album filenames
-    const allFiles = fs.readdirSync(DIR)
+    const allFiles = fs.readdirSync(DATA_DIR)
         .filter(n => n.startsWith('album_') && n.endsWith('.json'))
         .sort();
 
-    fs.writeFileSync(path.join(DIR, 'albums_list.json'),
+    fs.writeFileSync(path.join(DATA_DIR, 'albums_list.json'),
         JSON.stringify(allFiles, null, 2), 'utf8');
 
-    console.log(`\n✅ Done.  albums_list.json updated (${allFiles.length} albums).`);
+    console.log(`\n✅ Done.  data/albums_list.json updated (${allFiles.length} albums).`);
 }
 
 main().catch(e => { console.error('Error:', e.message); process.exit(1); });
